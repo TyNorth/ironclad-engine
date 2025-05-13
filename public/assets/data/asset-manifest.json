@@ -1,0 +1,11 @@
+{
+  "images": [
+    { "name": "mainTilesetPNG", "path": "/assets/images/tilesets/tileset.png" },
+    { "name": "testPlayer", "path": "/assets/images/test_image.png" }
+  ],
+  "jsonFiles": [
+    { "name": "testMapData", "path": "/assets/data/maps/test_map.json" },
+    { "name": "gameConfig", "path": "/assets/data/test_data.json" }
+  ],
+  "audio": []
+}
