@@ -1,0 +1,8 @@
+{
+  "message": "Hello from test_data.json!",
+  "version": 1.0,
+  "settings": {
+    "difficulty": "easy",
+    "soundEnabled": true
+  }
+}
