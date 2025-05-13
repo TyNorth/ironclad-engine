@@ -1,0 +1,79 @@
+{
+  "PlayerCharacter": {
+    "description": "Default player character template.",
+    "components": [
+      {
+        "type": "Position",
+        "data": { "x": 0, "y": 0 }
+      },
+      {
+        "type": "Velocity",
+        "data": { "vx": 0, "vy": 0 }
+      },
+      {
+        "type": "RenderableSprite",
+        "data": {
+          "spriteAssetKey": "testPlayer",
+          "width": 48,
+          "height": 48,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "PlayerControlled",
+        "data": {}
+      },
+      {
+        "type": "Health",
+        "data": { "max": 100, "current": 100, "regen": 0.1 }
+      },
+      {
+        "type": "Stats",
+        "data": { "strength": 10, "dexterity": 12, "constitution": 8, "speed": 200 }
+      }
+    ]
+  },
+  "MovingBlock": {
+    "description": "A simple block that moves based on its velocity.",
+    "components": [
+      {
+        "type": "Position",
+        "data": { "x": 50, "y": 50 }
+      },
+      {
+        "type": "Velocity",
+        "data": { "vx": 30, "vy": 0 }
+      },
+      {
+        "type": "RenderableSprite",
+        "data": {
+          "spriteAssetKey": "testPlayer",
+          "width": 32,
+          "height": 32
+        }
+      }
+    ]
+  },
+  "StaticTree": {
+    "description": "A non-moving tree decorative element.",
+    "components": [
+      {
+        "type": "Position",
+        "data": { "x": 0, "y": 0 }
+      },
+      {
+        "type": "RenderableSprite",
+        "data": {
+          "spriteAssetKey": "treeSprite",
+          "width": 64,
+          "height": 96
+        }
+      },
+      {
+        "type": "IsSolid",
+        "data": {}
+      }
+    ]
+  }
+}
