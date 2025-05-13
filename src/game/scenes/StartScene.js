@@ -3,11 +3,16 @@
 /**
  * @file StartScene.js
  * @description The main starting menu scene for Tartu Legends.
- * Uses InputManager (via IroncladEngine API) for menu navigation.
+ * Uses InputManager (via the passed engine instance) for menu navigation.
  */
 
 class StartScene {
   constructor() {
+    /**
+     * @private
+     * @type {import('../../engine/core/IroncladEngine.js').default | null}
+     */
+    this.engine = null // Will be set in initialize
     /**
      * @private
      * @type {import('../../engine/core/InputManager.js').default | null}
@@ -17,7 +22,7 @@ class StartScene {
      * @private
      * @type {import('../../engine/core/SceneManager.js').default | null}
      */
-    this.sceneManager = null // Store SceneManager for convenience
+    this.sceneManager = null
 
     /** @private @type {string} */
     this.titleText = 'Tartu Legends'
@@ -37,26 +42,29 @@ class StartScene {
 
   /**
    * Initializes the scene.
+   * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
    * @param {CanvasRenderingContext2D} context - The 2D rendering context.
    * @param {object} [data={}] - Optional data passed during scene transition.
    */
-  initialize(context, data = {}) {
-    console.log(`StartScene: Initialized with data:`, data)
+  initialize(engine, context, data = {}) {
+    console.log(`StartScene: Initializing with engine. Received data:`, data)
+    this.engine = engine
     this.selectedOptionIndex = 0
 
-    if (window.gameEngine) {
-      if (typeof window.gameEngine.getInputManager === 'function') {
-        this.inputManager = window.gameEngine.getInputManager()
-      } else {
-        console.error('StartScene: InputManager getter not found on gameEngine!')
-      }
-      if (typeof window.gameEngine.getSceneManager === 'function') {
-        this.sceneManager = window.gameEngine.getSceneManager()
-      } else {
-        console.error('StartScene: SceneManager getter not found on gameEngine!')
-      }
-    } else {
-      console.error('StartScene: window.gameEngine is not defined! Core systems unavailable.')
+    if (!this.engine) {
+      console.error('StartScene: Engine instance not provided to initialize!')
+      // Potentially set a flag to prevent updates/renders if engine is crucial
+      return
+    }
+
+    this.inputManager = this.engine.getInputManager()
+    this.sceneManager = this.engine.getSceneManager()
+
+    if (!this.inputManager) {
+      console.error('StartScene: InputManager not available via engine instance!')
+    }
+    if (!this.sceneManager) {
+      console.error('StartScene: SceneManager not available via engine instance!')
     }
 
     if (data && data.message) {
@@ -67,30 +75,30 @@ class StartScene {
   /**
    * Updates the scene's logic.
    * @param {number} deltaTime - The time elapsed since the last frame.
+   * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
    */
-  update(deltaTime) {
+  update(deltaTime, engine) {
+    // engine parameter is available if needed
     if (!this.inputManager) {
       return
     }
 
-    if (this.inputManager.isKeyJustPressed('ArrowUp')) {
+    if (this.inputManager.isActionJustPressed('menuUp')) {
+      // Using action defined in main.js
       this.selectedOptionIndex--
       if (this.selectedOptionIndex < 0) {
         this.selectedOptionIndex = this.menuOptions.length - 1
       }
-      // console.log('StartScene: Navigated Up, selected index:', this.selectedOptionIndex);
-    } else if (this.inputManager.isKeyJustPressed('ArrowDown')) {
+    } else if (this.inputManager.isActionJustPressed('menuDown')) {
+      // Using action
       this.selectedOptionIndex++
       if (this.selectedOptionIndex >= this.menuOptions.length) {
         this.selectedOptionIndex = 0
       }
-      // console.log('StartScene: Navigated Down, selected index:', this.selectedOptionIndex);
     }
 
-    if (
-      this.inputManager.isKeyJustPressed('Enter') ||
-      this.inputManager.isKeyJustPressed('Space')
-    ) {
+    if (this.inputManager.isActionJustPressed('menuConfirm')) {
+      // Using action
       this.handleMenuSelection()
     }
   }
@@ -98,8 +106,10 @@ class StartScene {
   /**
    * Renders the scene.
    * @param {CanvasRenderingContext2D} context - The 2D rendering context.
+   * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
    */
-  render(context) {
+  render(context, engine) {
+    // engine parameter is available if needed
     context.fillStyle = '#301040'
     context.fillRect(0, 0, context.canvas.width, context.canvas.height)
 
@@ -131,8 +141,14 @@ class StartScene {
     )
   }
 
-  unload() {
+  /**
+   * Cleans up when the scene is exited.
+   * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
+   */
+  unload(engine) {
+    // engine parameter is available if needed
     console.log('StartScene: Unloaded.')
+    this.engine = null // Clear engine reference
   }
 
   /** @private */
@@ -141,6 +157,7 @@ class StartScene {
     console.log(`StartScene: Selected option: "${selected}" (Index: ${this.selectedOptionIndex})`)
 
     if (!this.sceneManager) {
+      // sceneManager should be set during initialize
       console.error('StartScene: SceneManager not available for action handling!')
       return
     }
@@ -148,13 +165,9 @@ class StartScene {
     switch (this.selectedOptionIndex) {
       case 0: // Start New Game
         console.log('StartScene: "Start New Game" selected. Transitioning to Overworld...')
-        // If 'loading' scene has already run and loaded all assets including those for overworld,
-        // we can switch directly. If not, 'loading' should be the target.
-        // Our current LoadingScene loads based on manifest and then switches to 'overworld'.
-        // So, if StartScene is reached AFTER LoadingScene, 'overworld' assets should be ready.
+        // Assuming 'overworld' assets are loaded by the initial LoadingScene
         this.sceneManager.switchTo('overworld', { newGame: true, from: 'StartScene' })
         break
-      // Add other cases for Continue, Load Game, Options later
       default:
         console.log(`StartScene: Action for "${selected}" not yet implemented.`)
         break

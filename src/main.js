@@ -3,24 +3,32 @@
 /**
  * @file main.js
  * @description The main entry point for Tartu Legends.
- * Initializes Vue, then initializes and starts the IroncladEngine, and defines input actions.
+ * Initializes Vue, then initializes and starts the IroncladEngine,
+ * defines input actions, and registers ECS systems.
  */
 
 import { createApp } from 'vue'
-import App from './App.vue'
-import IroncladEngine from './engine/core/IroncladEngine.js'
+import App from './App.vue' // Your root Vue component
+import IroncladEngine from './engine/core/IroncladEngine.js' // The main engine class
 
 // Import your game scenes
 import LoadingScene from './game/scenes/LoadingScene.js'
 import StartScene from './game/scenes/StartScene.js'
 import OverworldScene from './game/scenes/OverworldScene.js'
 
+// Import game-specific ECS systems
+import MovementSystem from './game/systems/MovementSystem.js' // 1. Import MovementSystem
+
+// Import Pinia if you're using it
 import { createPinia } from 'pinia'
 
+// Initialize Vue App
 const vueApp = createApp(App)
 vueApp.use(createPinia())
-vueApp.mount('#app')
+vueApp.mount('#app') // Mount Vue to the div with id="app" in your index.html
 
+// --- Game Engine Initialization ---
+// Wait for Vue to mount and DOM to be ready
 Promise.resolve()
   .then(() => {
     const canvasElement = document.getElementById('game-canvas')
@@ -42,7 +50,7 @@ Promise.resolve()
 
     const assetManifestPath = '/assets/data/asset-manifest.json'
 
-    let engine
+    let engine // Will hold the IroncladEngine instance
     try {
       console.log('main.js: Initializing IroncladEngine...')
       engine = new IroncladEngine({
@@ -53,36 +61,47 @@ Promise.resolve()
         sceneRegistry: gameSceneRegistry,
       })
 
+      // window.gameEngine is set by IroncladEngine's constructor
       if (window.gameEngine) {
-        window.gameEngine.vueApp = vueApp
+        window.gameEngine.vueApp = vueApp // Optionally attach Vue app
       }
       console.log('main.js: IroncladEngine initialized successfully.')
 
       // --- Define Game Input Actions ---
-      // This should happen after engine (and thus InputManager) is initialized.
       if (window.gameEngine && typeof window.gameEngine.getInputManager === 'function') {
         const inputManager = window.gameEngine.getInputManager()
-
-        // Player Movement Actions
         inputManager.defineAction('moveUp', ['KeyW', 'ArrowUp'])
         inputManager.defineAction('moveDown', ['KeyS', 'ArrowDown'])
         inputManager.defineAction('moveLeft', ['KeyA', 'ArrowLeft'])
         inputManager.defineAction('moveRight', ['KeyD', 'ArrowRight'])
-
-        // Menu Navigation & Interaction Actions
-        inputManager.defineAction('menuUp', ['ArrowUp']) // Can reuse ArrowUp or have distinct if needed later
-        inputManager.defineAction('menuDown', ['ArrowDown']) // Can reuse ArrowDown
+        inputManager.defineAction('menuUp', ['ArrowUp'])
+        inputManager.defineAction('menuDown', ['ArrowDown'])
         inputManager.defineAction('menuConfirm', ['Enter', 'Space'])
-        inputManager.defineAction('menuCancel', ['Escape']) // Example for a cancel action
-
-        console.log('main.js: Game input actions defined.')
+        inputManager.defineAction('menuCancel', ['Escape'])
+        console.log('main.js: Game input actions defined in InputManager.')
       } else {
         console.error('main.js: Could not get InputManager from gameEngine to define actions.')
       }
+
+      // --- Register ECS Systems ---
+      // Ensure 'engine' instance is used here, which is the same as window.gameEngine
+      if (engine && typeof engine.registerSystem === 'function') {
+        engine.registerSystem(new MovementSystem(), 10) // 2. Register MovementSystem (priority 10)
+        // Register other systems here later, e.g.:
+        // engine.registerSystem(new RenderSystem(), 100);
+        // engine.registerSystem(new AISystem(), 20);
+      } else {
+        console.error(
+          'main.js: Could not register MovementSystem, engine or registerSystem not available.',
+        )
+      }
     } catch (error) {
-      console.error('Fatal Error: Failed to initialize IroncladEngine or define actions:', error)
+      console.error(
+        'Fatal Error: Failed to initialize IroncladEngine, define actions, or register systems:',
+        error,
+      )
       alert(`Fatal Engine Error: ${error.message}. Check console for details.`)
-      // ... (canvas error display logic from before) ...
+      // ... (canvas error display logic) ...
       try {
         const ctx = canvasElement.getContext('2d')
         if (ctx) {

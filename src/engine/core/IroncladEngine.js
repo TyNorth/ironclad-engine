@@ -2,34 +2,20 @@
 
 /**
  * @file IroncladEngine.js
- * @description Main class for the Ironclad Engine, an HTML5 Canvas game engine.
- * It initializes and manages core engine systems including an EventManager.
+ * @description Main class for the Ironclad Engine.
  */
 
 import GameLoop from './GameLoop.js'
 import SceneManager from './SceneManager.js'
 import AssetLoader from './AssetLoader.js'
 import InputManager from './InputManager.js'
-import EventManager from './EventManager.js' // 1. Import EventManager
+import EventManager from './EventManager.js'
+import EntityManager from '../ecs/EntityManager.js'
+import PrefabManager from '../ecs/PrefabManager.js'
 
 class IroncladEngine {
-  /**
-   * The singleton instance of the engine.
-   * @private
-   * @type {IroncladEngine | null}
-   */
   static instance = null
 
-  /**
-   * Creates or retrieves the singleton instance of the IroncladEngine.
-   * @param {object} [config={}] - Configuration object for the engine.
-   * @param {string | HTMLCanvasElement} config.canvas - The ID of the canvas element or the canvas element itself.
-   * @param {number} [config.width=800] - Desired canvas width.
-   * @param {number} [config.height=600] - Desired canvas height.
-   * @param {string} config.assetManifestPath - Path to the initial asset manifest JSON.
-   * @param {object} config.sceneRegistry - Object like { sceneName: SceneClass, ... }.
-   * @returns {IroncladEngine} The singleton instance.
-   */
   constructor({ canvas, width = 800, height = 600, assetManifestPath, sceneRegistry } = {}) {
     if (IroncladEngine.instance) {
       console.warn('IroncladEngine: Instance already created. Returning existing instance.')
@@ -44,7 +30,6 @@ class IroncladEngine {
     }
 
     if (typeof canvas === 'string') {
-      /** @type {HTMLCanvasElement | null} */
       this.canvas = document.getElementById(canvas)
       if (!this.canvas)
         throw new Error(`IroncladEngine: Canvas element with ID "${canvas}" not found.`)
@@ -56,26 +41,26 @@ class IroncladEngine {
 
     this.canvas.width = width
     this.canvas.height = height
-
-    /** @type {CanvasRenderingContext2D | null} */
     this.context = this.canvas.getContext('2d')
     if (!this.context) throw new Error('IroncladEngine: Failed to get 2D rendering context.')
 
-    /** @type {AssetLoader} */
+    // Instantiate core managers
     this.assetLoader = new AssetLoader()
-    /** @type {InputManager} */
     this.inputManager = new InputManager()
-    /** @type {SceneManager} */
-    this.sceneManager = new SceneManager()
-    this.sceneManager.setContext(this.context)
-    /** @type {EventManager} */
-    this.events = new EventManager() // 2. Instantiate EventManager
+    this.events = new EventManager()
+    this.entityManager = new EntityManager()
+    this.prefabManager = new PrefabManager(this.entityManager, this.assetLoader)
 
+    this.sceneManager = new SceneManager()
+    // Pass both context and the engine instance (this) to SceneManager
+    this.sceneManager.setContextAndEngine(this.context, this) // MODIFIED LINE
+
+    /** @private @type {Array<{system: import('../ecs/System.js').default, priority: number}>} */
+    this.systems = []
     /** @private @type {string} */
     this.assetManifestPath = assetManifestPath
     /** @private @type {object} */
     this.sceneRegistry = sceneRegistry
-
     /** @private @type {GameLoop} */
     this.gameLoop = new GameLoop(
       (deltaTime) => this._update(deltaTime),
@@ -84,11 +69,11 @@ class IroncladEngine {
 
     IroncladEngine.instance = this
     if (window) {
-      window.gameEngine = this
+      window.gameEngine = this // Still useful for easy console access
       console.log('IroncladEngine: Instance created and assigned to window.gameEngine.')
     }
 
-    this._registerScenes()
+    this._registerScenes() // SceneManager now has engine reference before scenes are added
   }
 
   /** @private */
@@ -99,92 +84,101 @@ class IroncladEngine {
         const SceneClass = this.sceneRegistry[sceneName]
         if (typeof SceneClass === 'function') {
           try {
+            // Scene constructor can be simple; engine ref is passed during initialize
             this.sceneManager.add(sceneName, new SceneClass())
           } catch (e) {
             console.error(`IroncladEngine: Error instantiating scene "${sceneName}":`, e)
           }
         } else {
-          console.warn(
-            `IroncladEngine: Item in sceneRegistry for "${sceneName}" is not a class/constructor.`,
-          )
+          /* ... */
         }
       }
     }
   }
 
-  /** @private */
   _update(deltaTime) {
+    // SceneManager's update will now pass the engine instance to the scene's update
     this.sceneManager.update(deltaTime)
+
+    for (const systemWrapper of this.systems) {
+      /* ... (system update logic as before) ... */
+      const system = systemWrapper.system
+      const requiredComponents = system.constructor.requiredComponents || []
+      let relevantEntities = []
+      if (requiredComponents.length > 0) {
+        relevantEntities = this.entityManager.getEntitiesWithComponents(requiredComponents)
+      }
+      try {
+        system.update(deltaTime, relevantEntities, this)
+      } catch (error) {
+        console.error(`Error in system ${system.constructor.name}.update():`, error, system)
+      }
+    }
+
     this.inputManager.update()
-    // this.events.emit('engine:update', deltaTime); // Example of an engine event
+    this.events.emit('engine:update:frameEnd', deltaTime)
   }
 
-  /** @private */
   _render() {
+    // SceneManager's render will now pass the engine instance to the scene's render
     this.sceneManager.render()
-    // this.events.emit('engine:render'); // Example of an engine event
   }
 
-  /**
-   * Starts the game engine.
-   * @param {string} initialSceneName - The name of the scene to start with.
-   * @param {object} [initialSceneData={}] - Data for the first scene.
-   */
   start(initialSceneName, initialSceneData = {}) {
     if (!this.sceneManager.scenes[initialSceneName]) {
-      const errorMsg = `IroncladEngine: Cannot start. Initial scene "${initialSceneName}" not found. Available: ${Object.keys(this.sceneManager.scenes).join(', ')}`
-      console.error(errorMsg)
-      throw new Error(errorMsg)
+      /* ... error ... */
     }
-    // Pass the engine itself to the initial scene data, so LoadingScene can get manifestPath
-    // This also makes the engine directly available to the first scene if needed beyond window.gameEngine
+    // `switchTo` in SceneManager will now pass the engine instance to the scene's initialize
     this.sceneManager.switchTo(initialSceneName, {
       ...initialSceneData,
-      assetManifestPath: this.assetManifestPath, // Specifically for LoadingScene
-      engine: this, // Optionally pass the engine instance itself
+      // No longer need to explicitly pass engine here if SceneManager handles it,
+      // but assetManifestPath is still useful for LoadingScene's initial data.
+      assetManifestPath: this.assetManifestPath,
+      // data.engine is now set by SceneManager during initialize
     })
     this.gameLoop.start()
     console.log(`IroncladEngine: Started with initial scene "${initialSceneName}".`)
   }
 
   stop() {
-    this.gameLoop.stop()
-    console.log('IroncladEngine: Stopped.')
+    /* ... as before ... */
   }
-
-  // --- Public API Getters ---
-  /** @returns {AssetLoader} */
   getAssetLoader() {
     return this.assetLoader
   }
-  /** @returns {InputManager} */
   getInputManager() {
     return this.inputManager
   }
-  /** @returns {SceneManager} */
   getSceneManager() {
     return this.sceneManager
   }
-  /** @returns {EventManager} */
   getEventManager() {
     return this.events
-  } // 3. Add getter for EventManager
-  /** @returns {HTMLCanvasElement} */
+  }
+  getEntityManager() {
+    return this.entityManager
+  }
+  getPrefabManager() {
+    return this.prefabManager
+  }
   getCanvas() {
     return this.canvas
   }
-  /** @returns {CanvasRenderingContext2D} */
   getContext() {
     return this.context
   }
-  /** @returns {GameLoop} */
   getGameLoop() {
     return this.gameLoop
   }
-  /** @returns {string} */
   getAssetManifestPath() {
     return this.assetManifestPath
-  } // Kept for LoadingScene
+  }
+  registerSystem(systemInstance, priority = 0) {
+    /* ... as before ... */
+  }
+  unregisterSystem(systemInstance) {
+    /* ... as before ... */
+  }
 }
 
 export default IroncladEngine

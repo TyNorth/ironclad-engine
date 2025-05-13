@@ -2,59 +2,52 @@
 
 /**
  * @file AssetLoader.js
- * @description Manages asynchronous loading and caching of game assets like images and JSON files.
+ * @description Manages asynchronous loading and caching of game assets.
+ * Emits events for loading progress, completion, and errors.
  */
 
 /**
  * @class AssetLoader
  * @description Handles loading and storage of game assets.
- * Uses Promises for asynchronous operations.
  */
 class AssetLoader {
   constructor() {
-    /**
-     * @private
-     * @type {Map<string, any>}
-     * @description Cache for storing loaded assets, keyed by their unique name.
-     */
+    /** @private @type {Map<string, any>} */
     this.cache = new Map()
-
-    /**
-     * @private
-     * @type {Array<{type: string, name: string, path: string}>}
-     * @description A queue of assets to be loaded. Each object contains type, name, and path.
-     */
+    /** @private @type {Array<{type: string, name: string, path: string, group?: string}>} */
     this.loadQueue = []
-
-    /**
-     * @type {number}
-     * @description The total number of assets successfully loaded.
-     */
+    /** @type {number} */
     this.loadedCount = 0
+    /** @type {number} */
+    this.totalCountInCurrentBatch = 0 // Renamed for clarity
+    /** @private @type {string | null} */
+    this.currentBatchId = null // To identify ongoing batch loadAll operations
 
-    /**
-     * @type {number}
-     * @description The total number of assets that were queued for loading in the last batch.
-     */
-    this.totalCount = 0
+    console.log('AssetLoader: Initialized.')
+  }
+
+  /** @private */
+  _getEventManager() {
+    if (window.gameEngine && typeof window.gameEngine.getEventManager === 'function') {
+      return window.gameEngine.getEventManager()
+    }
+    // console.warn("AssetLoader: EventManager not found via window.gameEngine. Events will not be emitted.");
+    return null
   }
 
   /**
    * Queues an image for loading.
    * @param {string} name - A unique name to identify the asset.
    * @param {string} path - The path to the image file.
-   * @returns {this} The AssetLoader instance for chaining.
+   * @param {string} [group='global'] - An optional group name for the asset.
+   * @returns {this}
    */
-  queueImage(name, path) {
-    if (this.cache.has(name)) {
-      console.warn(`AssetLoader: Image asset "${name}" is already cached or queued. Skipping.`)
+  queueImage(name, path, group = 'global') {
+    if (this.cache.has(name) || this.loadQueue.find((asset) => asset.name === name)) {
+      // console.warn(`AssetLoader: Image asset "${name}" already cached or queued. Skipping.`);
       return this
     }
-    if (this.loadQueue.find((asset) => asset.name === name)) {
-      console.warn(`AssetLoader: Image asset "${name}" is already in the load queue. Skipping.`)
-      return this
-    }
-    this.loadQueue.push({ type: 'image', name, path })
+    this.loadQueue.push({ type: 'image', name, path, group })
     return this
   }
 
@@ -62,31 +55,35 @@ class AssetLoader {
    * Queues a JSON file for loading.
    * @param {string} name - A unique name to identify the asset.
    * @param {string} path - The path to the JSON file.
-   * @returns {this} The AssetLoader instance for chaining.
+   * @param {string} [group='global'] - An optional group name for the asset.
+   * @returns {this}
    */
-  queueJSON(name, path) {
-    if (this.cache.has(name)) {
-      console.warn(`AssetLoader: JSON asset "${name}" is already cached or queued. Skipping.`)
+  queueJSON(name, path, group = 'global') {
+    if (this.cache.has(name) || this.loadQueue.find((asset) => asset.name === name)) {
+      // console.warn(`AssetLoader: JSON asset "${name}" already cached or queued. Skipping.`);
       return this
     }
-    if (this.loadQueue.find((asset) => asset.name === name)) {
-      console.warn(`AssetLoader: JSON asset "${name}" is already in the load queue. Skipping.`)
-      return this
-    }
-    this.loadQueue.push({ type: 'json', name, path })
+    this.loadQueue.push({ type: 'json', name, path, group })
     return this
   }
 
-  /**
-   * @private
-   * Loads a single image file.
-   * @param {string} name - The unique name for the asset.
-   * @param {string} path - The path to the image file.
-   * @returns {Promise<HTMLImageElement>} A promise that resolves with the loaded HTMLImageElement.
-   */
-  _loadImage(name, path) {
+  /** @private */
+  _loadImage(name, path, group) {
     return new Promise((resolve, reject) => {
       if (this.cache.has(name)) {
+        // console.log(`AssetLoader: Image "${name}" already in cache.`);
+        this.loadedCount++ // Still count it towards progress if re-queued for a batch
+        const eventManager = this._getEventManager()
+        if (eventManager) {
+          eventManager.emit('asset:progress', {
+            loaded: this.loadedCount,
+            total: this.totalCountInCurrentBatch,
+            assetName: name,
+            assetPath: path,
+            group: group,
+            status: 'cached',
+          })
+        }
         resolve(this.cache.get(name))
         return
       }
@@ -94,27 +91,60 @@ class AssetLoader {
       image.onload = () => {
         this.cache.set(name, image)
         this.loadedCount++
-        console.log(`AssetLoader: Image "${name}" loaded successfully from ${path}`)
+        // console.log(`AssetLoader: Image "${name}" loaded from ${path}`);
+        const eventManager = this._getEventManager()
+        if (eventManager) {
+          eventManager.emit('asset:loaded', { name, path, group, asset: image })
+          eventManager.emit('asset:progress', {
+            loaded: this.loadedCount,
+            total: this.totalCountInCurrentBatch,
+            assetName: name,
+            assetPath: path,
+            group: group,
+            status: 'loaded',
+          })
+        }
         resolve(image)
       }
-      image.onerror = (error) => {
-        console.error(`AssetLoader: Failed to load image "${name}" from ${path}`, error)
-        reject(new Error(`Failed to load image "${name}": ${path}`))
+      image.onerror = (errorEvent) => {
+        const error = new Error(`Failed to load image "${name}": ${path}`)
+        console.error(`AssetLoader: ${error.message}`, errorEvent)
+        const eventManager = this._getEventManager()
+        if (eventManager) {
+          eventManager.emit('asset:error', { name, path, group, error })
+          eventManager.emit('asset:progress', {
+            // Still emit progress for error to count it as "processed"
+            loaded: this.loadedCount, // loadedCount doesn't increment on error
+            total: this.totalCountInCurrentBatch,
+            assetName: name,
+            assetPath: path,
+            group: group,
+            status: 'error',
+          })
+        }
+        reject(error)
       }
       image.src = path
     })
   }
 
-  /**
-   * @private
-   * Loads a single JSON file.
-   * @param {string} name - The unique name for the asset.
-   * @param {string} path - The path to the JSON file.
-   * @returns {Promise<object>} A promise that resolves with the parsed JSON object.
-   */
-  _loadJSON(name, path) {
+  /** @private */
+  _loadJSON(name, path, group) {
     return new Promise((resolve, reject) => {
       if (this.cache.has(name)) {
+        // console.log(`AssetLoader: JSON "${name}" already in cache.`);
+        this.loadedCount++
+        const eventManager = this._getEventManager()
+        if (eventManager) {
+          eventManager.emit('asset:progress', {
+            loaded: this.loadedCount,
+            total: this.totalCountInCurrentBatch,
+            assetName: name,
+            assetPath: path,
+            group: group,
+            status: 'cached',
+          })
+        }
         resolve(this.cache.get(name))
         return
       }
@@ -128,11 +158,35 @@ class AssetLoader {
         .then((data) => {
           this.cache.set(name, data)
           this.loadedCount++
-          console.log(`AssetLoader: JSON "${name}" loaded successfully from ${path}`)
+          // console.log(`AssetLoader: JSON "${name}" loaded from ${path}`);
+          const eventManager = this._getEventManager()
+          if (eventManager) {
+            eventManager.emit('asset:loaded', { name, path, group, asset: data })
+            eventManager.emit('asset:progress', {
+              loaded: this.loadedCount,
+              total: this.totalCountInCurrentBatch,
+              assetName: name,
+              assetPath: path,
+              group: group,
+              status: 'loaded',
+            })
+          }
           resolve(data)
         })
         .catch((error) => {
           console.error(`AssetLoader: Failed to load JSON "${name}" from ${path}`, error)
+          const eventManager = this._getEventManager()
+          if (eventManager) {
+            eventManager.emit('asset:error', { name, path, group, error })
+            eventManager.emit('asset:progress', {
+              loaded: this.loadedCount,
+              total: this.totalCountInCurrentBatch,
+              assetName: name,
+              assetPath: path,
+              group: group,
+              status: 'error',
+            })
+          }
           reject(new Error(`Failed to load JSON "${name}": ${path}`))
         })
     })
@@ -140,53 +194,108 @@ class AssetLoader {
 
   /**
    * Starts loading all queued assets.
-   * @returns {Promise<void>} A promise that resolves when all queued assets are loaded,
-   * or rejects if any asset fails to load.
+   * @param {string} [batchId='defaultBatch'] - An optional identifier for this loading batch.
+   * @returns {Promise<Map<string, any>>} A promise that resolves with a map of successfully loaded assets in this batch,
+   * or rejects if any critical asset fails (though individual errors are also emitted).
    */
-  loadAll() {
+  loadAll(batchId = `batch_${Date.now()}`) {
     if (this.loadQueue.length === 0) {
-      console.log('AssetLoader: No assets in queue to load.')
-      return Promise.resolve()
+      // console.log('AssetLoader: No assets in queue to load.');
+      const eventManager = this._getEventManager()
+      if (eventManager)
+        eventManager.emit('asset:batchCompleted', {
+          batchId,
+          loadedAssets: new Map(),
+          totalAssetsInBatch: 0,
+          success: true,
+        })
+      return Promise.resolve(new Map())
     }
 
-    console.log(`AssetLoader: Starting to load ${this.loadQueue.length} asset(s)...`)
-    this.totalCount = this.loadQueue.length
-    this.loadedCount = 0 // Reset for this batch
+    const currentQueue = [...this.loadQueue] // Process a copy of the queue
+    this.loadQueue = [] // Clear the main queue for next batch
 
-    const promises = this.loadQueue.map((assetToLoad) => {
+    this.totalCountInCurrentBatch = currentQueue.length
+    this.loadedCount = 0 // Reset for this batch
+    this.currentBatchId = batchId
+
+    console.log(
+      `AssetLoader: Starting to load batch "${batchId}" with ${this.totalCountInCurrentBatch} asset(s)...`,
+    )
+    const eventManager = this._getEventManager()
+    if (eventManager) {
+      eventManager.emit('asset:batchStarted', {
+        batchId,
+        totalAssets: this.totalCountInCurrentBatch,
+      })
+    }
+
+    const promises = currentQueue.map((assetToLoad) => {
+      let loadPromise
       if (assetToLoad.type === 'image') {
-        return this._loadImage(assetToLoad.name, assetToLoad.path)
+        loadPromise = this._loadImage(assetToLoad.name, assetToLoad.path, assetToLoad.group)
       } else if (assetToLoad.type === 'json') {
-        return this._loadJSON(assetToLoad.name, assetToLoad.path)
+        loadPromise = this._loadJSON(assetToLoad.name, assetToLoad.path, assetToLoad.group)
+      } else {
+        console.warn(
+          `AssetLoader: Unknown asset type "${assetToLoad.type}" for "${assetToLoad.name}". Skipping.`,
+        )
+        const err = new Error(`Unknown asset type: ${assetToLoad.type}`)
+        if (eventManager)
+          eventManager.emit('asset:error', {
+            name: assetToLoad.name,
+            path: assetToLoad.path,
+            group: assetToLoad.group,
+            error: err,
+          })
+        loadPromise = Promise.reject(err) // Make it fail for Promise.allSettled
       }
-      // Add other types like 'audio' here in the future
-      console.warn(
-        `AssetLoader: Unknown asset type "${assetToLoad.type}" for "${assetToLoad.name}". Skipping.`,
-      )
-      return Promise.resolve() // Resolve immediately for unknown types to not break Promise.all
+      // Return an object to identify asset name on settlement
+      return loadPromise
+        .then((asset) => ({ name: assetToLoad.name, status: 'fulfilled', value: asset }))
+        .catch((error) => ({ name: assetToLoad.name, status: 'rejected', reason: error }))
     })
 
-    // Clear the queue once we've created all the promises
-    this.loadQueue = []
+    return Promise.allSettled(promises).then((results) => {
+      const successfullyLoadedAssets = new Map()
+      let allSucceeded = true
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          successfullyLoadedAssets.set(result.name, result.value)
+        } else {
+          allSucceeded = false
+          // Individual errors already emitted by _loadImage/_loadJSON
+          console.warn(
+            `AssetLoader: Asset "${result.name}" failed to load in batch "${batchId}". Reason:`,
+            result.reason.message,
+          )
+        }
+      })
 
-    return Promise.all(promises)
-      .then(() => {
-        console.log(`AssetLoader: All ${this.totalCount} assets loaded successfully.`)
-      })
-      .catch((error) => {
-        console.error('AssetLoader: One or more assets failed to load.', error)
-        // Even if some assets fail, others might have succeeded and are in cache.
-        // The individual load errors are already logged.
-        throw error // Re-throw to indicate failure of loadAll
-      })
+      if (eventManager) {
+        eventManager.emit('asset:batchCompleted', {
+          batchId,
+          loadedAssets: successfullyLoadedAssets,
+          totalAssetsInBatch: this.totalCountInCurrentBatch,
+          success: allSucceeded,
+        })
+      }
+
+      if (allSucceeded) {
+        console.log(
+          `AssetLoader: Batch "${batchId}" (${this.loadedCount}/${this.totalCountInCurrentBatch}) loaded successfully.`,
+        )
+        return successfullyLoadedAssets
+      } else {
+        console.warn(`AssetLoader: Batch "${batchId}" completed with some errors.`)
+        // Resolve with successfully loaded assets, but let handler know via event or a flag if needed
+        return Promise.reject(new Error(`Batch "${batchId}" had loading errors.`))
+      }
+    })
   }
 
-  /**
-   * Retrieves a loaded asset from the cache.
-   * @param {string} name - The unique name of the asset.
-   * @returns {any | undefined} The loaded asset, or undefined if not found.
-   */
   get(name) {
+    /* ... (no changes) ... */
     if (!this.cache.has(name)) {
       console.warn(`AssetLoader: Asset "${name}" not found in cache. Was it loaded?`)
       return undefined
@@ -194,33 +303,25 @@ class AssetLoader {
     return this.cache.get(name)
   }
 
-  /**
-   * Gets the current loading progress.
-   * @returns {{loaded: number, total: number, progress: number}}
-   * An object containing the number of loaded assets, total assets in the last batch,
-   * and progress percentage (0-1).
-   */
   getProgress() {
-    if (this.totalCount === 0) {
-      return { loaded: 0, total: 0, progress: 1 } // No assets, so 100% done.
+    /* ... (no changes, but now reflects totalCountInCurrentBatch) ... */
+    if (this.totalCountInCurrentBatch === 0 && this.loadQueue.length === 0) {
+      return { loaded: this.loadedCount, total: this.totalCountInCurrentBatch, progress: 1 }
     }
     return {
       loaded: this.loadedCount,
-      total: this.totalCount,
-      progress: this.totalCount > 0 ? this.loadedCount / this.totalCount : 0,
+      total: this.totalCountInCurrentBatch,
+      progress:
+        this.totalCountInCurrentBatch > 0 ? this.loadedCount / this.totalCountInCurrentBatch : 0,
     }
   }
 
-  /**
-   * Clears the asset cache and resets counts.
-   * Useful if you need to reload all assets, e.g., for a full game reset
-   * or when switching to a completely different set of assets.
-   */
   clearCache() {
+    /* ... (no changes) ... */
     this.cache.clear()
     this.loadedCount = 0
-    this.totalCount = 0
-    this.loadQueue = [] // Also clear any pending queue
+    this.totalCountInCurrentBatch = 0
+    this.loadQueue = []
     console.log('AssetLoader: Cache and queue cleared.')
   }
 }
