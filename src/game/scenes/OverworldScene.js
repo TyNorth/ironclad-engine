@@ -64,6 +64,7 @@ class OverworldScene {
       difficulty: 'Normal',
       showHints: true,
       playerName: 'Hero', // Could come from player data
+      changesMade: false,
     }
     this.isPausedByManager = false
 
@@ -77,6 +78,12 @@ class OverworldScene {
     if (!this.engine) {
       console.error('OverworldScene: Engine instance not provided!')
       return
+    }
+
+    // Register as a data provider for its gameSettings
+    if (this.engine.saveLoadManager) {
+      this.engine.saveLoadManager.registerDataProvider('overworldSettings', this)
+      console.log("OverworldScene: Registered as data provider for 'overworldSettings'.")
     }
     this.assetLoader = this.engine.getAssetLoader()
     this.inputManager = this.engine.getInputManager()
@@ -218,6 +225,31 @@ class OverworldScene {
     }
   }
 
+  // Method for SaveLoadManager - Data Provider Interface
+  getSaveData() {
+    // This now returns the live, potentially modified gameSettings
+    console.log(
+      'OverworldScene: getSaveData() called, returning LIVE gameSettings:',
+      JSON.stringify(this.gameSettings),
+    )
+    return { ...this.gameSettings } // Still good to return a copy for the actual save data structure
+  }
+
+  // Method for SaveLoadManager - Data Provider Interface
+  loadSaveData(data) {
+    if (data) {
+      this.gameSettings = { ...this.gameSettings, ...data } // Merge loaded data
+      console.log(
+        'OverworldScene: loadSaveData() called, gameSettings updated to:',
+        JSON.stringify(this.gameSettings),
+      )
+      // If other parts of OverworldScene depend on gameSettings, they might need to be refreshed here.
+      // For example, if volume directly affected an audio player owned by OverworldScene.
+    } else {
+      console.log("OverworldScene: loadSaveData() called with no data for 'overworldSettings'.")
+    }
+  }
+
   isTileSolidAtWorldXY(worldX, worldY) {
     if (!this.collisionLayerData || this.tileWidth <= 0 || this.tileHeight <= 0) return false
     const tileCol = Math.floor(worldX / this.tileWidth)
@@ -238,22 +270,17 @@ class OverworldScene {
     if (engine.inputManager.isActionJustPressed('togglePause')) {
       console.log("OverworldScene: 'togglePause' action detected.")
 
-      // 1. Create the UI Context Object for this pause session
-      const pauseSessionContext = {
-        volume: this.gameSettings.volume,
-        difficulty: this.gameSettings.difficulty,
-        showHints: this.gameSettings.showHints,
-        playerName: this.gameSettings.playerName, // Pass relevant info
-        changesMade: false, // Flag for the UI scenes to set if they alter context
-      }
+      // Reset changesMade flag for the new UI session
+      this.gameSettings.changesMade = false
+
       console.log(
-        'OverworldScene: Pushing PauseScene with context:',
-        JSON.stringify(pauseSessionContext),
+        'OverworldScene: Pushing PauseScene, passing direct gameSettings as uiContext:',
+        JSON.stringify(this.gameSettings),
       )
 
-      // 2. Push PauseScene with the context
-      engine.sceneManager.pushScene('PauseScene', { uiContext: pauseSessionContext })
-      return // Stop further updates in this frame as we're pausing
+      // Pass the actual this.gameSettings object as the uiContext
+      engine.sceneManager.pushScene('PauseScene', { uiContext: this.gameSettings })
+      return
     }
 
     // Toggle debug view with 'toggleDebug' action (e.g., 'C' key)
@@ -429,37 +456,38 @@ class OverworldScene {
    * Expected to be { uiContext: modifiedContextObject }
    */
   async resume(engine, data = {}) {
-    // isPausedByManager flag (if you used it) should be set to false here.
-    // this.isPausedByManager = false;
+    this.isPausedByManager = false
     console.log('OverworldScene: Resumed.')
 
-    if (data && data.uiContext) {
-      const returnedUiContext = data.uiContext
+    // The 'data.uiContext' will be the same object as 'this.gameSettings'
+    // if the shared reference pattern was used.
+    // 'data.loadOccurred' is the key differentiator.
+
+    if (data && data.loadOccurred) {
       console.log(
-        'OverworldScene: Received UI Context from Pause Menu:',
-        JSON.stringify(returnedUiContext),
+        'OverworldScene: Resuming after a game load. Game settings were updated by loadSaveData.',
       )
-
-      if (returnedUiContext.changesMade) {
-        console.log('OverworldScene: Applying changes from UI session...')
-        this.gameSettings.volume = returnedUiContext.volume
-        this.gameSettings.difficulty = returnedUiContext.difficulty
-        this.gameSettings.showHints = returnedUiContext.showHints
-        // playerName is usually not changed in options, but shown.
-
-        // Here you would typically apply these settings, e.g.:
-        // engine.audioManager.setVolume(this.gameSettings.volume / 100);
-        // this.applyDifficulty(this.gameSettings.difficulty);
-        console.log('OverworldScene: New game settings:', JSON.stringify(this.gameSettings))
-      } else {
-        console.log('OverworldScene: No changes made in UI session.')
-      }
+      // this.gameSettings is already authoritative from the load.
+      // We might want to reset 'changesMade' if it was part of gameSettings.
+      // However, 'changesMade' is more of a UI session flag.
+      // For simplicity, we can assume a load means settings are "finalized".
+    } else if (this.gameSettings.changesMade) {
+      // Check the flag on the direct gameSettings object
+      console.log(
+        'OverworldScene: Changes were made during UI session (no load). Settings are already live updated.',
+      )
+      // Values are already up-to-date in this.gameSettings.
+      // You might perform actions here if settings being changed requires them (e.g., apply audio volume).
+      // this.engine.audioManager.setVolume(this.gameSettings.volume / 100); // Example
+      // this.gameSettings.changesMade = false; // Reset flag after processing
     } else {
-      console.log(
-        'OverworldScene: Resumed without UI context data from pause menu (or unexpected format).',
-      )
+      console.log('OverworldScene: Resumed. No changes made or no load occurred.')
     }
-    // Resume game music, etc.
+
+    console.log(
+      'OverworldScene: Final effective game settings on resume:',
+      JSON.stringify(this.gameSettings),
+    )
   }
 
   unload(engine) {

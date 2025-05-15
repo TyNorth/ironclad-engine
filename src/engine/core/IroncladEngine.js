@@ -13,6 +13,7 @@ import EventManager from './EventManager.js'
 import EntityManager from '../ecs/EntityManager.js'
 import PrefabManager from '../ecs/PrefabManager.js'
 import Camera from '../rendering/Camera.js' // 1. Import Camera
+import SaveLoadManager from './SaveLoadManager.js'
 // import System from '../ecs/System.js'; // For type hint in getSystem if using TS/JSDoc extensively
 
 class IroncladEngine {
@@ -106,6 +107,8 @@ class IroncladEngine {
     // Instantiate core managers
     this.assetLoader = new AssetLoader()
     this.inputManager = new InputManager()
+    this.inputManager.initialize(this.canvas)
+    this.saveLoadManager = new SaveLoadManager(this)
     this.events = new EventManager()
     this.entityManager = new EntityManager()
     this.prefabManager = new PrefabManager(this.entityManager, this.assetLoader)
@@ -224,6 +227,9 @@ class IroncladEngine {
   }
   getPrefabManager() {
     return this.prefabManager
+  }
+  getSaveLoadManager() {
+    return this.saveLoadManager
   }
   getCanvas() {
     return this.canvas
