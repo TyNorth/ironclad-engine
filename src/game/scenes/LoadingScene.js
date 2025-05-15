@@ -2,14 +2,16 @@
 
 /**
  * @file LoadingScene.js
- * @description Loads the asset manifest, then all assets listed,
- * and then initializes the PrefabManager. Uses engine instance passed to methods.
+ * @description Loads the asset manifest, then all assets listed including the main map data.
+ * After the map data is loaded, it parses it to find and load all necessary tileset images.
+ * Finally, it processes prefabs and transitions to the next scene.
+ * Uses event-driven progress updates from AssetLoader.
  */
 
 class LoadingScene {
   constructor() {
     /** @private @type {import('../../engine/core/IroncladEngine.js').default | null} */
-    this.engine = null // Will be set in initialize
+    this.engine = null
     /** @private @type {import('../../engine/core/AssetLoader.js').default | null} */
     this.assetLoader = null
     /** @private @type {import('../../engine/core/EventManager.js').default | null} */
@@ -18,16 +20,28 @@ class LoadingScene {
     this.prefabManager = null
 
     /** @private @type {string | null} */
-    this.assetManifestPath = null // Will get from engine or data
+    this.assetManifestPath = null
+    /** * @private
+     * @description Path to the main map JSON file, relative to public root (e.g., /assets/data/maps/test_map.json).
+     * This is determined from the asset manifest.
+     */
+    this.mapJsonActualPath = ''
 
     /** @private @type {string} */
     this.loadingStatusText = 'Initializing...'
     /** @private @type {string} */
     this.currentBatchProgressText = ''
-    /** @private @type {string | null} */
-    this.manifestBatchId = 'manifest_load_batch'
-    /** @private @type {string | null} */
-    this.gameAssetsBatchId = 'game_assets_load_batch'
+
+    /** @private @type {string} */
+    this.manifestBatchId = `manifest_load_${Date.now()}`
+    /** @private @type {string} */
+    this.globalAssetsBatchId = `global_assets_load_${Date.now()}`
+    /** @private @type {string} */
+    this.tilesetImagesBatchId = `tileset_images_load_${Date.now()}`
+    /** @private @type {string} */ // Key for map data in AssetLoader, as defined in manifest
+    this.mapDataAssetKey = 'testMapData'
+    /** @private @type {string} */ // Key for prefabs JSON in AssetLoader, as defined in manifest
+    this.prefabsAssetKey = 'entityPrefabs'
 
     /** @private @type {boolean} */
     this.allAssetsAndPrefabsReady = false
@@ -36,7 +50,7 @@ class LoadingScene {
     /** @private @type {HTMLImageElement | null} */
     this.displayImage = null
 
-    // Bind event handlers
+    // Bind event handlers to ensure 'this' context is correct
     this._handleAssetProgress = this._handleAssetProgress.bind(this)
     this._handleBatchStarted = this._handleBatchStarted.bind(this)
     this._handleBatchCompleted = this._handleBatchCompleted.bind(this)
@@ -49,7 +63,7 @@ class LoadingScene {
    * Initializes the scene.
    * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
    * @param {CanvasRenderingContext2D} context - The 2D rendering context.
-   * @param {object} [data={}] - Optional data (assetManifestPath is expected here from IroncladEngine.start).
+   * @param {object} [data={}] - Optional data, expected to contain `assetManifestPath`.
    */
   initialize(engine, context, data = {}) {
     console.log(`LoadingScene: Initializing with engine and data:`, data)
@@ -57,12 +71,11 @@ class LoadingScene {
     this.allAssetsAndPrefabsReady = false
     this.loadingError = null
     this.displayImage = null
-    this.currentLoadingStage = 'manifest'
     this.loadingStatusText = 'Preparing asset manifest...'
     this.currentBatchProgressText = ''
 
     if (!this.engine) {
-      this.handleError('Engine instance not provided to LoadingScene initialize!')
+      this.handleError('Engine instance not provided!')
       return
     }
 
@@ -71,9 +84,7 @@ class LoadingScene {
     this.prefabManager = this.engine.getPrefabManager()
 
     if (!this.assetLoader || !this.eventManager || !this.prefabManager) {
-      this.handleError(
-        'Core engine systems (AssetLoader, EventManager, PrefabManager) missing or not gettable from engine!',
-      )
+      this.handleError('Core engine systems (AssetLoader, EventManager, PrefabManager) missing!')
       return
     }
 
@@ -92,111 +103,215 @@ class LoadingScene {
 
     // --- Stage 1: Load the Asset Manifest ---
     console.log(`LoadingScene: Queuing asset manifest from: ${this.assetManifestPath}`)
-    this.assetLoader.queueJSON('initialAssetManifest', this.assetManifestPath, 'manifest_group') // Added group
+    this.assetLoader.queueJSON('initialAssetManifest', this.assetManifestPath, 'manifest_group')
     this.assetLoader.loadAll(this.manifestBatchId).catch((error) => {
+      // This catch is for if loadAll itself throws an error (e.g., network issue before any individual loads)
       this.handleError(`Failed to initiate manifest loading: ${error.message || error}`)
     })
   }
 
   /** @private */
-  _handleAssetProgress(data) {
-    if (data.batchId === this.manifestBatchId && !this.allAssetsAndPrefabsReady) {
-      this.loadingStatusText = `Loading manifest...`
-    } else if (data.batchId === this.gameAssetsBatchId && !this.allAssetsAndPrefabsReady) {
+  _handleBatchStarted(data) {
+    // data = { batchId, totalAssets }
+    console.log(`LoadingScene: Batch "${data.batchId}" started, ${data.totalAssets} assets total.`)
+    if (data.batchId === this.manifestBatchId) this.loadingStatusText = `Loading manifest...`
+    else if (data.batchId === this.globalAssetsBatchId)
       this.loadingStatusText = `Loading game assets...`
+    else if (data.batchId === this.tilesetImagesBatchId)
+      this.loadingStatusText = `Loading tileset images...`
+    this.currentBatchProgressText = `(0/${data.totalAssets}) 0%`
+  }
+
+  /** @private */
+  _handleAssetProgress(data) {
+    // data = { loaded, total, assetName, assetPath, group, status, batchId }
+    // Update status text based on current active batch if needed
+    if (data.batchId === this.manifestBatchId && !this.allAssetsAndPrefabsReady) {
+      /* status already set by batchStarted */
+    } else if (data.batchId === this.globalAssetsBatchId && !this.allAssetsAndPrefabsReady) {
+      /* status already set */
+    } else if (data.batchId === this.tilesetImagesBatchId && !this.allAssetsAndPrefabsReady) {
+      /* status already set */
     }
+
     const percentage =
       data.total > 0
         ? Math.round((data.loaded / data.total) * 100)
         : data.status === 'cached' || data.status === 'loaded'
           ? 100
           : 0
-    this.currentBatchProgressText = `(${data.loaded}/${data.total}) ${percentage}%`
+    this.currentBatchProgressText = `(${data.loaded}/${data.total}) ${percentage}% [${data.assetName}]`
   }
 
   /** @private */
-  _handleBatchStarted(data) {
-    console.log(`LoadingScene: Batch "${data.batchId}" started, ${data.totalAssets} assets total.`)
-    if (data.batchId === this.manifestBatchId) {
-      this.loadingStatusText = `Loading manifest...`
-    } else if (data.batchId === this.gameAssetsBatchId) {
-      this.loadingStatusText = `Loading game assets...`
-    }
-    this.currentBatchProgressText = `(0/${data.totalAssets}) 0%`
+  _handleAssetError(data) {
+    // data = { name, path, group, error, batchId }
+    console.error(
+      `LoadingScene: Error loading asset "${data.name}" from "${data.path}" (Batch: ${data.batchId}). Error:`,
+      data.error?.message,
+    )
+    // A general error will be handled by the batchCompleted.success flag
   }
 
   /** @private */
   _handleBatchCompleted(data) {
+    // data = { batchId, loadedAssets: Map<string, any>, totalAssetsInBatch: number, success: boolean }
     console.log(`LoadingScene: Batch "${data.batchId}" completed. Success: ${data.success}`)
-    if (!this.engine) return // Should not happen if initialize worked
+    if (!this.engine) return
 
     if (!data.success) {
-      this.handleError(`Asset batch "${data.batchId}" failed to load completely.`)
+      this.handleError(
+        `Asset batch "${data.batchId}" failed. Check console for individual asset errors.`,
+      )
       return
     }
 
     if (data.batchId === this.manifestBatchId) {
       const manifest = this.assetLoader.get('initialAssetManifest')
       if (!manifest) {
-        this.handleError('Manifest data not found after manifest batch load!')
+        this.handleError('Manifest data not found in cache after load!')
         return
       }
-      console.log('LoadingScene: Asset Manifest processed. Queuing game assets from manifest...')
+
+      console.log('LoadingScene: Asset Manifest loaded. Queuing global assets from manifest...')
       this.loadingStatusText = 'Manifest loaded. Queuing game assets...'
       this.currentBatchProgressText = ''
 
-      let assetsToLoadFromManifest = 0
+      let assetsToLoadCount = 0
       if (manifest.images && Array.isArray(manifest.images)) {
         manifest.images.forEach((imgDef) => {
-          /* ... queueImage ... */
           if (imgDef.name && imgDef.path) {
-            this.assetLoader.queueImage(imgDef.name, imgDef.path, 'game_assets')
-            assetsToLoadFromManifest++
+            this.assetLoader.queueImage(imgDef.name, imgDef.path, 'global_images')
+            assetsToLoadCount++
           }
         })
       }
       if (manifest.jsonFiles && Array.isArray(manifest.jsonFiles)) {
         manifest.jsonFiles.forEach((jsonDef) => {
-          /* ... queueJSON ... */
           if (jsonDef.name && jsonDef.path) {
-            this.assetLoader.queueJSON(jsonDef.name, jsonDef.path, 'game_assets')
-            assetsToLoadFromManifest++
+            this.assetLoader.queueJSON(jsonDef.name, jsonDef.path, 'global_json')
+            assetsToLoadCount++
+            if (jsonDef.name === this.mapDataAssetKey) {
+              // e.g., 'testMapData'
+              this.mapJsonActualPath = jsonDef.path // Store actual path for resolving relative paths
+            }
           }
         })
       }
-      // Add audio etc. here later
+      // TODO: Add other asset types like audio
 
-      if (assetsToLoadFromManifest > 0) {
+      if (assetsToLoadCount > 0) {
         this.assetLoader
-          .loadAll(this.gameAssetsBatchId)
+          .loadAll(this.globalAssetsBatchId)
           .catch((error) =>
-            this.handleError(`Failed to initiate game asset loading: ${error.message || error}`),
+            this.handleError(`Failed to initiate global asset loading: ${error.message || error}`),
           )
       } else {
-        this.processPrefabsAndTransition()
+        this.queueTilesetImagesFromMapData() // No global assets, proceed to tilesets
       }
-    } else if (data.batchId === this.gameAssetsBatchId) {
+    } else if (data.batchId === this.globalAssetsBatchId) {
+      // Global assets (including map JSON and prefab JSON) are loaded. Now load tileset images.
+      this.queueTilesetImagesFromMapData()
+    } else if (data.batchId === this.tilesetImagesBatchId) {
+      // All visual tileset images are loaded. Now process prefabs.
+      this.processPrefabsAndTransition()
+    }
+  }
+
+  /** @private */
+  queueTilesetImagesFromMapData() {
+    if (!this.engine || !this.assetLoader) return
+    console.log('LoadingScene: Global assets loaded. Parsing map for dynamic tileset images...')
+    this.loadingStatusText = 'Map data loaded. Queuing tileset images...'
+    this.currentBatchProgressText = ''
+
+    const mapData = this.assetLoader.get(this.mapDataAssetKey)
+    if (!mapData || !mapData.tilesets) {
+      console.warn(
+        `LoadingScene: Map data ("${this.mapDataAssetKey}") not found or has no tilesets. Skipping dynamic tileset image loading.`,
+      )
+      this.processPrefabsAndTransition()
+      return
+    }
+    if (!this.mapJsonActualPath) {
+      console.error(
+        'LoadingScene: mapJsonActualPath not set. Cannot resolve relative tileset image paths.',
+      )
+      this.processPrefabsAndTransition() // Might still work if all paths are absolute from root
+      return
+    }
+
+    let tilesetImagesToQueue = 0
+    // Base URL for resolving paths relative to the map JSON file's location
+    const mapFileBaseUrl = new URL(this.mapJsonActualPath, window.location.origin)
+
+    mapData.tilesets.forEach((tsDef) => {
+      if (tsDef.image) {
+        // CRITICAL: map JSON must contain `image` path for each tileset
+        // Resolve the relative image path from the map JSON's location
+        let finalImagePathForLoader
+        try {
+          const imageUrl = new URL(tsDef.image, mapFileBaseUrl)
+          finalImagePathForLoader = imageUrl.pathname // Path relative to public root (e.g., /assets/images/...)
+        } catch (e) {
+          console.error(
+            `LoadingScene: Could not resolve image path "${tsDef.image}" relative to map "${this.mapJsonActualPath}". Error: ${e.message}`,
+          )
+          // Attempt to use the path as is, assuming it might be absolute from public root
+          finalImagePathForLoader = tsDef.image.startsWith('/') ? tsDef.image : '/' + tsDef.image
+        }
+
+        // Use the original `tsDef.image` string (as found in JSON) as the unique asset key
+        this.assetLoader.queueImage(tsDef.image, finalImagePathForLoader, 'tileset_images_dynamic')
+        tilesetImagesToQueue++
+        console.log(
+          `LoadingScene: Queued tileset image using JSON key "${tsDef.image}" from resolved path "${finalImagePathForLoader}"`,
+        )
+      } else {
+        console.warn(
+          `LoadingScene: Tileset definition (name: ${tsDef.name || 'N/A'}, GID: ${tsDef.firstgid}, Source: ${tsDef.source || 'N/A'}) in mapData is missing 'image' property.`,
+        )
+      }
+    })
+
+    if (tilesetImagesToQueue > 0) {
+      this.assetLoader
+        .loadAll(this.tilesetImagesBatchId)
+        .catch((error) =>
+          this.handleError(`Failed to initiate tileset image loading: ${error.message || error}`),
+        )
+    } else {
+      console.log('LoadingScene: No additional tileset images found in map data to load.')
       this.processPrefabsAndTransition()
     }
   }
 
   /** @private */
   processPrefabsAndTransition() {
-    if (!this.engine) return
-    this.loadingStatusText = 'Game assets loaded. Processing prefabs...'
+    if (!this.engine || !this.prefabManager) return
+    this.loadingStatusText = 'Finalizing assets. Processing prefabs...'
     this.currentBatchProgressText = ''
 
     let prefabsWereProcessed = false
-    if (this.prefabManager.loadPrefabsFromAsset('entityPrefabs')) {
-      console.log('LoadingScene: Entity prefabs processed by PrefabManager.')
-      prefabsWereProcessed = true
+    // Ensure the prefab JSON itself (e.g., 'entityPrefabs') was loaded in the globalAssetsBatch
+    if (this.assetLoader.get(this.prefabsAssetKey)) {
+      if (this.prefabManager.loadPrefabsFromAsset(this.prefabsAssetKey)) {
+        console.log('LoadingScene: Entity prefabs processed by PrefabManager.')
+        prefabsWereProcessed = true
+      } else {
+        console.warn(
+          `LoadingScene: Prefab definitions ("${this.prefabsAssetKey}") could not be processed by PrefabManager, though file was loaded.`,
+        )
+      }
     } else {
-      console.warn("LoadingScene: Prefab definitions ('entityPrefabs') could not be processed.")
+      console.warn(
+        `LoadingScene: Prefab JSON file ("${this.prefabsAssetKey}") not found in AssetLoader cache. Cannot process prefabs.`,
+      )
     }
 
     this.allAssetsAndPrefabsReady = true
     this.loadingStatusText = 'Loading complete! Transitioning...'
-    this.displayImage = this.assetLoader.get('testPlayer')
+    this.displayImage = this.assetLoader.get('testPlayer') // Example display image
 
     setTimeout(() => {
       const sceneManager = this.engine.getSceneManager()
@@ -204,45 +319,26 @@ class LoadingScene {
         sceneManager.switchTo('overworld', {
           assetsLoaded: true,
           prefabsReady: prefabsWereProcessed,
-          message: 'All assets and prefabs processed.',
+          message: 'All assets, dynamic tilesets, and prefabs processed.',
         })
       } else {
         console.error('LoadingScene: SceneManager not available for transition!')
       }
-    }, 1000)
-  }
-
-  /** @private */
-  _handleAssetError(data) {
-    console.error(
-      `LoadingScene: Error loading asset "${data.name}" from "${data.path}". Group: ${data.group}. Error:`,
-      data.error.message,
-    )
+    }, 1000) // Shorter delay
   }
 
   handleError(errorMessage) {
-    console.error('LoadingScene:', errorMessage)
+    console.error('LoadingScene Error:', errorMessage)
     this.loadingError = errorMessage
-    this.loadingStatusText = `ERROR: ${this.loadingError}`
+    this.loadingStatusText = `ERROR: ${this.loadingError.substring(0, 100)}` // Keep error message brief for display
     this.currentBatchProgressText = ''
   }
 
-  /**
-   * Update method for the scene.
-   * @param {number} deltaTime - Time since last frame.
-   * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
-   */
   update(deltaTime, engine) {
-    // Progress text is updated by event handlers primarily.
+    /* Progress text updated by events */
   }
 
-  /**
-   * Render method for the scene.
-   * @param {CanvasRenderingContext2D} context - The drawing context.
-   * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
-   */
   render(context, engine) {
-    // ... (render logic remains the same: draws loadingStatusText, currentBatchProgressText, displayImage)
     context.fillStyle = '#282828'
     context.fillRect(0, 0, context.canvas.width, context.canvas.height)
     context.font = '20px Arial'
@@ -252,10 +348,12 @@ class LoadingScene {
       ? context.canvas.height / 2 - 40
       : context.canvas.height / 2 - 10
     context.fillText(this.loadingStatusText, context.canvas.width / 2, mainMessageY)
+
     if (this.currentBatchProgressText && !this.loadingError) {
       context.font = '18px Arial'
       context.fillText(this.currentBatchProgressText, context.canvas.width / 2, mainMessageY + 25)
     }
+
     if (this.displayImage && this.displayImage.complete && this.displayImage.naturalWidth > 0) {
       const imgWidth = this.displayImage.width
       const imgHeight = this.displayImage.height
@@ -269,21 +367,16 @@ class LoadingScene {
     }
   }
 
-  /**
-   * Called when the scene is unloaded.
-   * @param {import('../../engine/core/IroncladEngine.js').default} engine - The engine instance.
-   */
   unload(engine) {
     console.log('LoadingScene: Unloaded. Removing event listeners.')
     if (this.eventManager) {
-      // Use the stored eventManager instance
       this.eventManager.off('asset:progress', this._handleAssetProgress, this)
       this.eventManager.off('asset:batchStarted', this._handleBatchStarted, this)
       this.eventManager.off('asset:batchCompleted', this._handleBatchCompleted, this)
       this.eventManager.off('asset:error', this._handleAssetError, this)
     }
     this.displayImage = null
-    this.engine = null // Clear engine reference
+    this.engine = null
   }
 }
 

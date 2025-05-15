@@ -3,7 +3,8 @@
     { "name": "mainTilesetPNG", "path": "/assets/images/tilesets/tileset.png" },
 
     { "name": "treeSprite", "path": "/assets/images/treeSprite.png" },
-    { "name": "testPlayer", "path": "/assets/images/test_image.png" }
+    { "name": "testPlayer", "path": "/assets/images/test_image.png" },
+    { "name": "playerWalkSheet", "path": "/assets/images/sprites/player_walk_sheet.png" }
   ],
   "jsonFiles": [
     { "name": "testMapData", "path": "/assets/data/maps/test_map.json" },

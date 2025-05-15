@@ -1,6 +1,5 @@
 {
   "PlayerCharacter": {
-    "description": "Default player character template.",
     "components": [
       {
         "type": "Position",
@@ -13,7 +12,7 @@
       {
         "type": "RenderableSprite",
         "data": {
-          "spriteAssetKey": "testPlayer",
+          "spriteAssetKey": "playerWalkSheet",
           "width": 48,
           "height": 48,
           "offsetX": 0,
@@ -34,8 +33,7 @@
       }
     ]
   },
-  "MovingBlock": {
-    "description": "A simple block that moves based on its velocity.",
+  "MovingBlockStatic": {
     "components": [
       {
         "type": "Position",
@@ -56,7 +54,6 @@
     ]
   },
   "StaticTree": {
-    "description": "A non-moving tree decorative element.",
     "components": [
       {
         "type": "Position",
@@ -73,6 +70,57 @@
       {
         "type": "IsSolid",
         "data": {}
+      }
+    ]
+  },
+  "AnimatedBlock": {
+    "description": "A block that uses an animation.",
+    "components": [
+      {
+        "type": "Position",
+        "data": { "x": 0, "y": 0 }
+      },
+      {
+        "type": "Velocity",
+        "data": { "vx": 20, "vy": 20 }
+      },
+      {
+        "type": "RenderableSprite",
+        "data": {
+          "spriteAssetKey": "playerWalkSheet",
+          "width": 48,
+          "height": 48
+        }
+      },
+      {
+        "type": "Collider",
+        "data": {
+          "width": 48,
+          "height": 48,
+          "offsetX": 0,
+          "offsetY": 0,
+          "collidesWithTiles": true
+        }
+      },
+      {
+        "type": "Animation",
+        "data": {
+          "animations": {
+            "walk_cycle": {
+              "frames": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+              "frameDuration": 0.15,
+              "loop": true,
+              "tileWidth": 48,
+              "tileHeight": 48,
+              "columns": 10
+            }
+          },
+          "currentAnimation": "walk_cycle",
+          "currentFrameIndex": 0,
+          "frameTimer": 0,
+          "isPlaying": true,
+          "playbackSpeed": 1.0
+        }
       }
     ]
   }

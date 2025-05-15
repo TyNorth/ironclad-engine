@@ -2,7 +2,8 @@
 
 /**
  * @file Player.js
- * @description Defines the Player class, responsible for player state, movement, and rendering.
+ * @description Defines the Player class, responsible for player state, movement, rendering,
+ * and now basic tile-based collision detection.
  */
 
 import Sprite from '../../engine/rendering/Sprite.js'
@@ -15,8 +16,8 @@ class Player {
    * @param {number} config.y - Initial y-coordinate in the world.
    * @param {import('../../engine/core/AssetLoader.js').default} assetLoader - Reference to the asset loader.
    * @param {string} [config.spriteSheetName='testPlayer'] - The name of the image asset for the player's sprite.
-   * @param {number} [config.width=48] - The width of the player sprite on canvas.
-   * @param {number} [config.height=48] - The height of the player sprite on canvas.
+   * @param {number} [config.width=48] - The width of the player.
+   * @param {number} [config.height=48] - The height of the player.
    * @param {number} [config.speed=150] - Player movement speed in pixels per second.
    */
   constructor({
@@ -30,68 +31,51 @@ class Player {
   }) {
     if (!assetLoader) {
       console.error('Player: AssetLoader not provided!')
-      return // Or throw error
+      // Consider throwing an error or having a non-functional state
+      return
     }
 
     this.worldX = x
     this.worldY = y
-    this.width = width
-    this.height = height
-    this.speed = speed // Pixels per second
+    this.width = width // Player's collision width
+    this.height = height // Player's collision height
+    this.speed = speed
 
     /** @type {Sprite | null} */
     this.sprite = null
-
     const playerImage = assetLoader.get(spriteSheetName)
     if (playerImage instanceof HTMLImageElement) {
-      // Create the sprite. For now, it uses the whole image.
-      // sx, sy, sWidth, sHeight could be used later for animation frames.
       this.sprite = new Sprite(
         playerImage,
-        this.worldX, // Initial sprite x (will be updated relative to viewport)
-        this.worldY, // Initial sprite y (will be updated relative to viewport)
-        this.width, // Destination width on canvas
-        this.height, // Destination height on canvas
-        // sx, sy, sWidth, sHeight could be image.naturalWidth/Height if not a spritesheet part
+        this.worldX,
+        this.worldY,
+        this.width,
+        this.height, // Sprite display dimensions match player dimensions
       )
       console.log(`Player: Sprite created with image "${spriteSheetName}".`)
     } else {
-      console.error(
-        `Player: Failed to get image asset "${spriteSheetName}" for player sprite. Is it loaded?`,
-      )
+      console.error(`Player: Failed to get image asset "${spriteSheetName}". Sprite not created.`)
     }
 
-    // Movement state
     this.velocityX = 0
     this.velocityY = 0
 
-    console.log(`Player: Created at (${this.worldX}, ${this.worldY})`)
+    console.log(
+      `Player: Created at (${this.worldX}, ${this.worldY}) with size ${this.width}x${this.height}`,
+    )
   }
 
-  /**
-   * Handles input for player movement.
-   * @param {import('../../engine/core/InputManager.js').default} inputManager - The input manager instance.
-   */
   handleInput(inputManager) {
     if (!inputManager) return
-
     this.velocityX = 0
     this.velocityY = 0
 
-    if (inputManager.isKeyPressed('KeyW') || inputManager.isKeyPressed('ArrowUp')) {
-      this.velocityY = -1
-    }
-    if (inputManager.isKeyPressed('KeyS') || inputManager.isKeyPressed('ArrowDown')) {
-      this.velocityY = 1
-    }
-    if (inputManager.isKeyPressed('KeyA') || inputManager.isKeyPressed('ArrowLeft')) {
-      this.velocityX = -1
-    }
-    if (inputManager.isKeyPressed('KeyD') || inputManager.isKeyPressed('ArrowRight')) {
-      this.velocityX = 1
-    }
+    // Using actions defined in main.js
+    if (inputManager.isActionPressed('moveUp')) this.velocityY = -1
+    if (inputManager.isActionPressed('moveDown')) this.velocityY = 1
+    if (inputManager.isActionPressed('moveLeft')) this.velocityX = -1
+    if (inputManager.isActionPressed('moveRight')) this.velocityX = 1
 
-    // Normalize diagonal movement (optional, but common)
     if (this.velocityX !== 0 && this.velocityY !== 0) {
       const length = Math.sqrt(this.velocityX * this.velocityX + this.velocityY * this.velocityY)
       this.velocityX = this.velocityX / length
@@ -100,63 +84,101 @@ class Player {
   }
 
   /**
-   * Updates the player's state and position.
+   * Updates the player's state, position, and handles collision.
    * @param {number} deltaTime - The time elapsed since the last frame, in seconds.
-   * @param {object} [worldBounds] - Optional world boundaries for basic clamping.
-   * @param {number} [worldBounds.minX=0]
-   * @param {number} [worldBounds.minY=0]
-   * @param {number} [worldBounds.maxX]
-   * @param {number} [worldBounds.maxY]
+   * @param {object} scene - The current scene, expected to have `isTileSolidAtWorldXY(x,y)` method
+   * and map boundary information.
+   * @param {object} [worldBounds] - Optional direct world boundaries for clamping.
    */
-  update(deltaTime, worldBounds = {}) {
-    // Calculate new position
-    this.worldX += this.velocityX * this.speed * deltaTime
-    this.worldY += this.velocityY * this.speed * deltaTime
+  update(deltaTime, scene, worldBounds = {}) {
+    if (!scene || typeof scene.isTileSolidAtWorldXY !== 'function') {
+      console.warn(
+        'Player.update: Scene with isTileSolidAtWorldXY method not provided. Skipping collision checks.',
+      )
+      // Fallback to movement without collision for this frame
+      this.worldX += this.velocityX * this.speed * deltaTime
+      this.worldY += this.velocityY * this.speed * deltaTime
+      this._clampToWorldBounds(worldBounds)
+      return
+    }
 
-    // Basic world boundary clamping (can be replaced by tile-based collision later)
+    const moveStepX = this.velocityX * this.speed * deltaTime
+    const moveStepY = this.velocityY * this.speed * deltaTime
+
+    // --- Collision Detection ---
+    // Check X-axis collision
+    if (moveStepX !== 0) {
+      const potentialX = this.worldX + moveStepX
+      let collisionX = false
+
+      // Points to check on the leading edge for X movement
+      const checkXEdge = this.velocityX > 0 ? potentialX + this.width - 1 : potentialX // -1 to be just inside
+
+      // Check top, middle, and bottom of the player's vertical span
+      const yPoints = [this.worldY, this.worldY + this.height / 2, this.worldY + this.height - 1]
+      for (const yPos of yPoints) {
+        if (scene.isTileSolidAtWorldXY(checkXEdge, yPos)) {
+          collisionX = true
+          break
+        }
+      }
+
+      if (!collisionX) {
+        this.worldX = potentialX
+      } else {
+        // Optional: Add "hugging" logic to align with wall if desired
+        // For now, just stop.
+        this.velocityX = 0 // Stop horizontal movement on collision
+      }
+    }
+
+    // Check Y-axis collision
+    if (moveStepY !== 0) {
+      const potentialY = this.worldY + moveStepY
+      let collisionY = false
+
+      // Points to check on the leading edge for Y movement
+      const checkYEdge = this.velocityY > 0 ? potentialY + this.height - 1 : potentialY // -1 to be just inside
+
+      // Check left, middle, and right of the player's horizontal span
+      const xPoints = [this.worldX, this.worldX + this.width / 2, this.worldX + this.width - 1]
+      for (const xPos of xPoints) {
+        if (scene.isTileSolidAtWorldXY(xPos, checkYEdge)) {
+          collisionY = true
+          break
+        }
+      }
+      if (!collisionY) {
+        this.worldY = potentialY
+      } else {
+        this.velocityY = 0 // Stop vertical movement on collision
+      }
+    }
+
+    this._clampToWorldBounds(worldBounds) // Final clamping to overall map edges
+  }
+
+  /** @private */
+  _clampToWorldBounds(worldBounds) {
     if (worldBounds.minX !== undefined) this.worldX = Math.max(worldBounds.minX, this.worldX)
     if (worldBounds.minY !== undefined) this.worldY = Math.max(worldBounds.minY, this.worldY)
     if (worldBounds.maxX !== undefined)
-      this.worldX = Math.min(worldBounds.maxX - this.width, this.worldX) // Assumes width is player width
+      this.worldX = Math.min(worldBounds.maxX - this.width, this.worldX)
     if (worldBounds.maxY !== undefined)
-      this.worldY = Math.min(worldBounds.maxY - this.height, this.worldY) // Assumes height is player height
-
-    if (this.sprite) {
-      // The sprite's x and y will be updated in the scene's render method relative to the viewport
-      // Here, we could update sprite frame for animation if we had an animation system.
-      // For now, the Player class itself doesn't directly set sprite.x/y to screen coords.
-      // The Scene will do that by considering the viewport.
-    }
+      this.worldY = Math.min(worldBounds.maxY - this.height, this.worldY)
   }
 
-  /**
-   * Renders the player's sprite.
-   * The scene is responsible for setting the sprite's screen x,y based on worldX, worldY and viewport.
-   * @param {CanvasRenderingContext2D} context - The 2D rendering context.
-   * @param {number} viewportX - The x-coordinate of the viewport's top-left corner in world pixels.
-   * @param {number} viewportY - The y-coordinate of the viewport's top-left corner in world pixels.
-   */
   render(context, viewportX, viewportY) {
     if (this.sprite && this.sprite.visible) {
-      // Update sprite's screen position based on player's world position and viewport
       this.sprite.x = Math.floor(this.worldX - viewportX)
       this.sprite.y = Math.floor(this.worldY - viewportY)
       this.sprite.render(context)
     }
   }
 
-  /**
-   * Gets the player's current world position.
-   * @returns {{x: number, y: number}}
-   */
   getPosition() {
     return { x: this.worldX, y: this.worldY }
   }
-
-  /**
-   * Gets the player's dimensions.
-   * @returns {{width: number, height: number}}
-   */
   getDimensions() {
     return { width: this.width, height: this.height }
   }
