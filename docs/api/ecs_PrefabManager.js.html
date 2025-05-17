@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: ecs/PrefabManager.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: ecs/PrefabManager.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/ecs/PrefabManager.js
+
+/**
+ * @file PrefabManager.js
+ * @description Manages entity prefab definitions and facilitates spawning entities from them.
+ */
+
+/**
+ * @typedef {object} ComponentDefinition
+ * @property {import('./EntityManager.js').ComponentTypeName} type - The type name of the component.
+ * @property {object} data - The initial data for the component.
+ */
+
+/**
+ * @typedef {object} PrefabDefinition
+ * @property {string} [description] - An optional description of the prefab.
+ * @property {Array&lt;ComponentDefinition>} components - An array of component definitions.
+ */
+
+/**
+ * @class PrefabManager
+ * @description Loads, stores, and manages entity prefab definitions from JSON.
+ * Provides functionality to spawn entities based on these prefabs.
+ */
+class PrefabManager {
+  /**
+   * Creates an instance of PrefabManager.
+   * @param {import('./EntityManager.js').default} entityManager - Reference to the EntityManager.
+   * @param {import('../core/AssetLoader.js').default} assetLoader - Reference to the AssetLoader.
+   */
+  constructor(entityManager, assetLoader) {
+    if (!entityManager) {
+      throw new Error('PrefabManager: EntityManager instance is required.')
+    }
+    if (!assetLoader) {
+      throw new Error('PrefabManager: AssetLoader instance is required.')
+    }
+    /**
+     * @private
+     * @type {import('./EntityManager.js').default}
+     */
+    this.entityManager = entityManager
+    /**
+     * @private
+     * @type {import('../core/AssetLoader.js').default}
+     */
+    this.assetLoader = assetLoader
+
+    /**
+     * @private
+     * @type {Map&lt;string, PrefabDefinition>}
+     * @description Stores all loaded prefab definitions, keyed by prefab name.
+     */
+    this.prefabs = new Map()
+
+    console.log('PrefabManager: Initialized.')
+  }
+
+  /**
+   * Loads prefab definitions from a previously loaded JSON asset.
+   * @param {string} assetKey - The key used in AssetLoader for the loaded JSON file containing prefab definitions.
+   * @returns {boolean} True if prefabs were successfully parsed and added, false otherwise.
+   */
+  loadPrefabsFromAsset(assetKey) {
+    const prefabData = this.assetLoader.get(assetKey)
+    if (!prefabData || typeof prefabData !== 'object') {
+      console.error(
+        `PrefabManager: Prefab data asset "${assetKey}" not found or is not a valid object.`,
+      )
+      return false
+    }
+
+    let count = 0
+    for (const prefabName in prefabData) {
+      if (Object.hasOwnProperty.call(prefabData, prefabName)) {
+        const definition = prefabData[prefabName]
+        if (definition &amp;&amp; Array.isArray(definition.components)) {
+          this.prefabs.set(prefabName, definition)
+          count++
+        } else {
+          console.warn(
+            `PrefabManager: Invalid prefab definition for "${prefabName}" in asset "${assetKey}". Missing "components" array.`,
+          )
+        }
+      }
+    }
+    console.log(`PrefabManager: Loaded ${count} prefabs from asset "${assetKey}".`)
+    return count > 0
+  }
+
+  /**
+   * Spawns an entity based on a prefab definition.
+   * @param {string} prefabName - The name of the prefab to spawn.
+   * @param {object} [overrideData={}] - An object containing data to override the prefab's defaults.
+   * Keys are component type names, values are objects with properties to override.
+   * Example: { "Position": { "x": 100, "y": 200 }, "Health": { "current": 50 } }
+   * @returns {import('./EntityManager.js').EntityId | null} The ID of the spawned entity, or null if prefab not found or error.
+   */
+  spawnEntity(prefabName, overrideData = {}) {
+    const prefab = this.prefabs.get(prefabName)
+    if (!prefab) {
+      console.error(`PrefabManager: Prefab "${prefabName}" not found.`)
+      return null
+    }
+
+    const entityId = this.entityManager.createEntity()
+    if (entityId === null || entityId === undefined) {
+      // Check if entity creation failed (shouldn't with current EM)
+      console.error(`PrefabManager: Failed to create entity for prefab "${prefabName}".`)
+      return null
+    }
+
+    // console.log(`PrefabManager: Spawning entity ${entityId} from prefab "${prefabName}" with overrides:`, overrideData);
+
+    prefab.components.forEach((compDef) => {
+      // Deep clone the component data from the prefab to avoid shared references
+      let finalComponentData = JSON.parse(JSON.stringify(compDef.data || {}))
+
+      // Apply overrides if any exist for this component type
+      if (overrideData[compDef.type]) {
+        finalComponentData = { ...finalComponentData, ...overrideData[compDef.type] }
+      }
+
+      this.entityManager.addComponent(entityId, compDef.type, finalComponentData)
+    })
+
+    console.log(
+      `PrefabManager: Entity ${entityId} spawned successfully from prefab "${prefabName}".`,
+    )
+    return entityId
+  }
+
+  /**
+   * Gets a prefab definition.
+   * @param {string} prefabName - The name of the prefab.
+   * @returns {PrefabDefinition | undefined}
+   */
+  getPrefabDefinition(prefabName) {
+    return this.prefabs.get(prefabName)
+  }
+}
+
+export default PrefabManager
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 19:48:24 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

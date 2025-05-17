@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: ui/Panel.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: ui/Panel.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/ui/Panel.js
+import BaseUIElement from './BaseUIElement.js'
+
+/**
+ * @class Panel
+ * @extends BaseUIElement
+ * @description A UI element that acts as a container for other UI elements,
+ * providing a background and border.
+ */
+class Panel extends BaseUIElement {
+  /**
+   * Creates an instance of Panel.
+   * @param {object} options - Configuration options for the panel.
+   * @param {number} [options.x=0] - The x-coordinate.
+   * @param {number} [options.y=0] - The y-coordinate.
+   * @param {number} [options.width=100] - The width of the panel.
+   * @param {number} [options.height=100] - The height of the panel.
+   * @param {string} [options.backgroundColor=null] - Background color (e.g., 'rgba(0,0,0,0.5)'). If null, no background.
+   * @param {string} [options.borderColor='gray'] - Border color.
+   * @param {number} [options.borderWidth=0] - Width of the border. If 0, no border.
+   * @param {BaseUIElement[]} [options.children=[]] - Initial child elements.
+   * @param {boolean} [options.visible=true] - Whether the panel is visible.
+   * @param {boolean} [options.enabled=true] - Whether the panel is enabled for updates.
+   * @param {string} [options.id] - Optional ID.
+   */
+  constructor(options = {}) {
+    super(options) // BaseUIElement handles x, y, width, height, visible, enabled, id
+
+    this.backgroundColor = options.backgroundColor || null
+    this.borderColor = options.borderColor || 'gray'
+    this.borderWidth = options.borderWidth !== undefined ? options.borderWidth : 0
+
+    /** @type {BaseUIElement[]} */
+    this.children = []
+    if (options.children &amp;&amp; Array.isArray(options.children)) {
+      options.children.forEach((child) => this.addChild(child))
+    }
+  }
+
+  addChild(element) {
+    if (element instanceof BaseUIElement) {
+      this.children.push(element)
+      if (this.engine) {
+        element.setEngine(this.engine)
+      }
+    } else {
+      console.warn('Panel.addChild: Attempted to add a non-UIElement.', element)
+    }
+  }
+
+  removeChild(element) {
+    const index = this.children.indexOf(element)
+    if (index > -1) {
+      this.children.splice(index, 1)
+      return true
+    }
+    return false
+  }
+
+  clearChildren() {
+    this.children = []
+  }
+
+  setEngine(engine) {
+    super.setEngine(engine)
+    this.children.forEach((child) => child.setEngine(engine))
+  }
+
+  update(deltaTime, engine, mousePos) {
+    super.update(deltaTime, engine, mousePos) // Call base update
+
+    if (!this.visible || !this.enabled) {
+      // If panel is not active, its children aren't either for input processing purposes.
+      // Individual children will still respect their own visible/enabled flags for rendering/updating.
+      return
+    }
+
+    for (const child of this.children) {
+      // Children's update methods will check their own visible/enabled flags.
+      child.update(deltaTime, engine, mousePos)
+    }
+  }
+
+  /**
+   * Specific drawing logic for the Panel and its children.
+   * Called by BaseUIElement.render after visibility and context checks.
+   * @param {CanvasRenderingContext2D} context - The rendering context.
+   * @param {import('../core/IroncladEngine.js').default} engine - The engine instance.
+   * @protected
+   */
+  _drawSelf(context, engine) {
+    // No need for this.visible check, BaseUIElement.render handles it.
+
+    // Render panel background
+    if (this.backgroundColor) {
+      context.fillStyle = this.backgroundColor
+      context.fillRect(this.x, this.y, this.width, this.height)
+    }
+
+    // Render panel border
+    if (this.borderWidth > 0) {
+      context.strokeStyle = this.borderColor
+      context.lineWidth = this.borderWidth
+      context.strokeRect(this.x, this.y, this.width, this.height)
+    }
+
+    // Render children
+    // Children will perform their own visibility checks via their public render method.
+    // context.save(); // Optional: if applying clipping or transforms for children
+    // If children's x,y were relative to the panel, you'd use:
+    // context.translate(this.x, this.y);
+    // Then children would draw at (child.x, child.y) within this translated space.
+    // For now, children use absolute canvas coordinates.
+
+    for (const child of this.children) {
+      // IMPORTANT: Call the child's public `render` method, not `_drawSelf` directly.
+      // This allows each child to do its own visibility/context checks.
+      child.render(context, engine)
+    }
+
+    // if (context.translate was used) context.restore();
+  }
+}
+
+export default Panel
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 19:48:24 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

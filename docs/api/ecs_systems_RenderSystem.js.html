@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: ecs/systems/RenderSystem.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: ecs/systems/RenderSystem.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/ecs/systems/RenderSystem.js
+
+import System from '../System.js'
+import Sprite from '../../rendering/Sprite.js' // Ensure this path is correct
+
+/**
+ * @class RenderSystem
+ * @extends System
+ * @description Handles rendering entities that have Position and RenderableSprite components.
+ * The actual drawing is performed when its `executeRenderPass` method is called by a scene.
+ */
+class RenderSystem extends System {
+  /**
+   * Specifies that this system is interested in entities with "Position" and "RenderableSprite" components.
+   * @static
+   * @type {Array&lt;import('../EntityManager.js').ComponentTypeName>}
+   */
+  static requiredComponents = ['Position', 'RenderableSprite']
+
+  /**
+   * @private
+   * @type {import('../../core/AssetLoader.js').default | null}
+   */
+  assetLoader = null
+
+  constructor() {
+    super()
+    // console.log("RenderSystem: Constructor called");
+  }
+
+  /**
+   * Initializes the system, getting necessary engine services.
+   * @param {import('../../core/IroncladEngine.js').default} engine - The engine instance.
+   */
+  initialize(engine) {
+    super.initialize(engine) // Sets this.engine
+    if (this.engine) {
+      this.assetLoader = this.engine.getAssetLoader()
+    }
+    if (!this.assetLoader) {
+      console.error('RenderSystem: AssetLoader not available from engine!')
+    }
+    console.log('RenderSystem: Initialized.')
+  }
+
+  /**
+   * Update logic for the RenderSystem (called by engine's system loop).
+   * For this version, actual drawing is handled by `executeRenderPass`, called by the scene.
+   * This update method could be used for culling, preparing draw lists, or animation logic
+   * if animation isn't in its own system. For now, it's minimal.
+   * @param {number} deltaTime - Time since last frame.
+   * @param {Array&lt;import('../EntityManager.js').EntityId>} entities - Entities with Position &amp; RenderableSprite (passed by engine).
+   * @param {import('../../core/IroncladEngine.js').default} engine - The engine instance.
+   */
+  update(deltaTime, entities, engine) {
+    // Currently, no per-frame update logic needed here if drawing is handled by executeRenderPass.
+    // Could be used for:
+    // - Culling entities into a this.visibleEntitiesForRenderPass list.
+    // - Updating internal state related to rendering if needed.
+  }
+
+  /**
+   * Executes the rendering pass for all relevant ECS entities.
+   * This method should be called by the active scene's render method at the appropriate time.
+   * @param {CanvasRenderingContext2D} context - The drawing context.
+   * @param {import('../../rendering/Camera.js').default} camera - The game camera for viewport information.
+   */
+  executeRenderPass(context, camera) {
+    if (!this.engine || !this.assetLoader || !context || !camera) {
+      // console.error("RenderSystem.executeRenderPass: Missing engine, assetLoader, context, or camera.");
+      return
+    }
+
+    const entityManager = this.engine.getEntityManager()
+    if (!entityManager) {
+      console.error('RenderSystem.executeRenderPass: EntityManager not available.')
+      return
+    }
+
+    // Get entities that match the system's requirements for rendering
+    const entitiesToRender = entityManager.getEntitiesWithComponents(
+      RenderSystem.requiredComponents,
+    )
+
+    const viewportX = camera.getViewportX()
+    const viewportY = camera.getViewportY()
+
+    // TODO: Implement Z-sorting or layer-based sorting here if needed in the future.
+    // For now, entities are rendered in the order they are retrieved.
+
+    for (const entityId of entitiesToRender) {
+      const position = entityManager.getComponent(entityId, 'Position')
+      const renderable = entityManager.getComponent(entityId, 'RenderableSprite')
+
+      if (!position || !renderable) continue // Should ideally not happen due to getEntitiesWithComponents
+
+      // Lazy instantiate Sprite object if it doesn't exist on the component
+      if (!renderable.spriteInstance) {
+        const image = this.assetLoader.get(renderable.spriteAssetKey)
+        if (image instanceof HTMLImageElement) {
+          renderable.spriteInstance = new Sprite(
+            image,
+            0,
+            0, // Sprite's internal x,y are relative, set by its own .x, .y
+            renderable.width || image.naturalWidth,
+            renderable.height || image.naturalHeight,
+            renderable.sx, // sx from component (updated by AnimationSystem or default)
+            renderable.sy, // sy from component
+            renderable.sWidth, // sWidth from component
+            renderable.sHeight, // sHeight from component
+          )
+        } else {
+          // console.warn(`RenderSystem: Image asset "${renderable.spriteAssetKey}" not found for entity ${entityId}.`);
+          continue
+        }
+      }
+
+      if (renderable.spriteInstance) {
+        const sprite = renderable.spriteInstance
+
+        // Update sprite's screen position based on entity's world position and viewport
+        sprite.x = Math.floor(position.x - viewportX + (renderable.offsetX || 0))
+        sprite.y = Math.floor(position.y - viewportY + (renderable.offsetY || 0))
+
+        // Ensure sprite's display dimensions are set from the component
+        // If sWidth/sHeight are defined (e.g. by AnimationSystem), use those for source,
+        // and component's width/height for destination.
+        sprite.width =
+          renderable.width ||
+          (renderable.sWidth ? renderable.sWidth : sprite.image ? sprite.image.naturalWidth : 0)
+        sprite.height =
+          renderable.height ||
+          (renderable.sHeight ? renderable.sHeight : sprite.image ? sprite.image.naturalHeight : 0)
+
+        // Apply other visual properties from the component to the sprite instance
+        sprite.opacity = renderable.opacity !== undefined ? renderable.opacity : 1.0
+        sprite.rotation = renderable.rotation !== undefined ? renderable.rotation : 0
+        sprite.scaleX = renderable.scaleX !== undefined ? renderable.scaleX : 1.0
+        sprite.scaleY = renderable.scaleY !== undefined ? renderable.scaleY : 1.0
+        sprite.visible = renderable.visible !== undefined ? renderable.visible : true
+
+        // Update the sprite's source frame based on what AnimationSystem (or defaults) put in RenderableSprite
+        // This ensures the Sprite object itself is using the correct source rectangle
+        if (
+          renderable.sx !== undefined &amp;&amp;
+          renderable.sy !== undefined &amp;&amp;
+          renderable.sWidth !== undefined &amp;&amp;
+          renderable.sHeight !== undefined
+        ) {
+          sprite.setFrame(renderable.sx, renderable.sy, renderable.sWidth, renderable.sHeight)
+        } else if (
+          sprite.image &amp;&amp;
+          (sprite.sWidth !== sprite.image.naturalWidth ||
+            sprite.sHeight !== sprite.image.naturalHeight)
+        ) {
+          // If no specific frame info, but sprite might have had one set before, reset to full image
+          sprite.setFrame(0, 0, sprite.image.naturalWidth, sprite.image.naturalHeight)
+        }
+        // If sx,sy,sWidth,sHeight are all undefined on renderable, Sprite constructor already defaults to full image.
+
+        sprite.render(context)
+      }
+    }
+  }
+}
+
+export default RenderSystem
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 19:48:24 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -91,6 +91,41 @@ The Ironclad Engine currently boasts the following core systems and capabilities
 
 ---
 
+## 📖 Documentation
+
+The Ironclad Engine's documentation is organized into two main parts:
+
+1. **API Reference:**
+
+   - Detailed documentation for all engine classes, modules, methods, and properties is generated automatically from JSDoc comments within the source code.
+   - This provides an in-depth look at the engine's public interface.
+   - **(To be generated)** Typically, you would run a JSDoc generation command like:
+
+     ```bash
+     jsdoc src/engine -r -d docs/api
+     ```
+
+   - The generated API documentation would then be available in the `docs/api/index.html` file in your project repository.
+   - [Link to API Documentation](./docs/api/index.html) (This link will work once docs are generated and committed)
+
+2. **Conceptual Guides & Tutorials:**
+   - Higher-level guides, tutorials, and architectural overviews are (or will be) available as Markdown files in the `/docs` directory of this repository.
+   - These guides cover topics such as:
+     - Engine Setup & Getting Started
+     - Scene Management
+     - Input System & Action Mapping
+     - Entity-Component-System (ECS) Usage
+     - Using UI Elements
+     - Asset Loading and Management
+     - Audio System
+     - Effects System
+     - Save/Load System
+   - [Browse Conceptual Guides](./docs/) (This link will work once you create Markdown files in a `docs` folder)
+
+We aim to keep the documentation up-to-date as the engine evolves. Please refer to the JSDoc comments in the code for the most current API details.
+
+---
+
 ## 🚀 Getting Started (Conceptual)
 
 As this is a project in active development, a formal "getting started" guide for external users is pending.

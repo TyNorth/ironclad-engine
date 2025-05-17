@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: ecs/System.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: ecs/System.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/ecs/System.js
+
+/**
+ * @file System.js
+ * @description Base class for all systems in the Entity-Component-System architecture.
+ */
+
+/**
+ * @class System
+ * @description Game-specific systems should extend this class.
+ * They typically define a static `requiredComponents` array specifying which
+ * components an entity must have for the system to process it, and an `update` method
+ * containing the system's logic.
+ *
+ * @property {import('../core/IroncladEngine.js').default | null} engine - A reference to the main engine instance.
+ * This is typically set by the IroncladEngine when the system is registered.
+ */
+class System {
+  /**
+   * An array of component type names (strings) that an entity must possess
+   * for this system to be interested in processing it.
+   * Derived systems should override this static property.
+   * Example: `static requiredComponents = ["Position", "Velocity"];`
+   * @type {Array&lt;import('./EntityManager.js').ComponentTypeName>}
+   * @static
+   */
+  static requiredComponents = []
+
+  /**
+   * Creates an instance of a System.
+   * The engine instance can be injected later via the `initialize` method
+   * or directly if the system is created by game code that has an engine reference.
+   */
+  constructor() {
+    /**
+     * @type {import('../core/IroncladEngine.js').default | null}
+     */
+    this.engine = null
+    // console.log(`${this.constructor.name} system constructor called.`);
+  }
+
+  /**
+   * Called when the system is registered with the IroncladEngine.
+   * This is a good place for one-time setup or to store the engine reference.
+   * @param {import('../core/IroncladEngine.js').default} engine - The IroncladEngine instance.
+   */
+  initialize(engine) {
+    this.engine = engine
+    // console.log(`System "${this.constructor.name}": Initialized.`);
+  }
+
+  /**
+   * The main update method for the system, called every frame by the IroncladEngine.
+   * Derived systems MUST override this method with their specific logic.
+   *
+   * @param {number} deltaTime - The time elapsed since the last frame, in seconds.
+   * @param {Array&lt;import('./EntityManager.js').EntityId>} entities - An array of entity IDs that match
+   * this system's `requiredComponents`. The engine pre-filters these.
+   * @param {import('../core/IroncladEngine.js').default} engine - The IroncladEngine instance, providing access
+   * to services like EntityManager, InputManager, EventManager, etc.
+   * (This is passed for convenience, same as `this.engine` if `initialize` was called).
+   */
+  update(deltaTime, entities, engine) {
+    // Default implementation does nothing. Derived systems should override this.
+    // console.warn(`System "${this.constructor.name}" must implement the update() method.`);
+  }
+
+  /**
+   * Called when the system is unregistered from the IroncladEngine or when the engine is shutting down.
+   * Useful for any cleanup tasks the system might need to perform.
+   */
+  shutdown() {
+    // console.log(`System "${this.constructor.name}": Shutdown.`);
+  }
+}
+
+export default System
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 19:48:24 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

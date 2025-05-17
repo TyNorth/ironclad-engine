@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: core/IroncladEngine.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: core/IroncladEngine.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/core/IroncladEngine.js
+
+/**
+ * @file IroncladEngine.js
+ * @description Main class for the Ironclad Engine.
+ */
+
+import GameLoop from './GameLoop.js'
+import SceneManager from './SceneManager.js'
+import AssetLoader from './AssetLoader.js'
+import InputManager from './InputManager.js'
+import EventManager from './EventManager.js'
+import EntityManager from '../ecs/EntityManager.js'
+import PrefabManager from '../ecs/PrefabManager.js'
+import Camera from '../rendering/Camera.js' // 1. Import Camera
+import SaveLoadManager from './SaveLoadManager.js'
+import EffectsManager from './EffectsManager.js'
+import AudioManager from './AudioManager.js'
+// import System from '../ecs/System.js'; // For type hint in getSystem if using TS/JSDoc extensively
+
+class IroncladEngine {
+  static instance = null
+
+  /**
+   * @type {HTMLCanvasElement | null}
+   */
+  canvas = null
+  /**
+   * @type {CanvasRenderingContext2D | null}
+   */
+  context = null
+  /**
+   * @type {AssetLoader | null}
+   */
+  assetLoader = null
+  /**
+   * @type {InputManager | null}
+   */
+  inputManager = null
+  /**
+   * @type {SceneManager | null}
+   */
+  sceneManager = null
+  /**
+   * @type {EventManager | null}
+   */
+  events = null
+  /**
+   * @type {EntityManager | null}
+   */
+  entityManager = null
+  /**
+   * @type {PrefabManager | null}
+   */
+  prefabManager = null
+  /**
+   * @type {Camera | null} // 2. Add Camera property
+   */
+  camera = null
+
+  /**
+   * @private
+   * @type {Array&lt;{system: import('../ecs/System.js').default, priority: number}>}
+   */
+  systems = []
+  /** @private @type {string | null} */
+  assetManifestPath = null
+  /** @private @type {object | null} */
+  sceneRegistry = null
+  /** @private @type {GameLoop | null} */
+  gameLoop = null
+
+  constructor({
+    canvas,
+    width = 800,
+    height = 600,
+    assetManifestPath,
+    sceneRegistry,
+    defaultWorldWidth, // Optional: for initial camera world bounds
+    defaultWorldHeight, // Optional: for initial camera world bounds
+  } = {}) {
+    if (IroncladEngine.instance) {
+      /* ... singleton check ... */ return IroncladEngine.instance
+    }
+    if (!canvas) throw new Error('IroncladEngine: Canvas element or ID must be provided.')
+
+    if (!assetManifestPath)
+      throw new Error('IroncladEngine: assetManifestPath must be provided in config.')
+    if (!sceneRegistry || Object.keys(sceneRegistry).length === 0) {
+      throw new Error('IroncladEngine: sceneRegistry must be provided and be non-empty in config.')
+    }
+
+    if (typeof canvas === 'string') {
+      this.canvas = document.getElementById(canvas)
+      if (!this.canvas)
+        throw new Error(`IroncladEngine: Canvas element with ID "${canvas}" not found.`)
+    } else if (canvas instanceof HTMLCanvasElement) {
+      this.canvas = canvas
+    } else {
+      throw new Error('IroncladEngine: Invalid canvas parameter.')
+    }
+
+    this.canvas.width = width
+    this.canvas.height = height
+    this.context = this.canvas.getContext('2d')
+    if (!this.context) throw new Error('IroncladEngine: Failed to get 2D rendering context.')
+
+    this.offscreenCanvas = document.createElement('canvas')
+    this.offscreenCanvas.width = width
+    this.offscreenCanvas.height = height
+    this.offscreenContext = this.offscreenCanvas.getContext('2d')
+    if (!this.offscreenContext)
+      throw new Error('IroncladEngine: Failed to get 2D rendering context for offscreen canvas.')
+    console.log('IroncladEngine: Offscreen canvas created.')
+
+    // Instantiate core managers
+    this.assetLoader = new AssetLoader()
+    this.inputManager = new InputManager()
+    this.inputManager.initialize(this.canvas, this)
+    this.saveLoadManager = new SaveLoadManager(this)
+    this.events = new EventManager()
+    this.entityManager = new EntityManager()
+    this.prefabManager = new PrefabManager(this.entityManager, this.assetLoader)
+    this.effectsManager = new EffectsManager(this)
+    this.audioManager = new AudioManager(this.assetLoader, this.events)
+
+    this.sceneManager = new SceneManager()
+    this.sceneManager.setContextAndEngine(this.offscreenContext, this)
+    // 2. Instantiate Camera
+    this.camera = new Camera({
+      viewportWidth: this.canvas.width,
+      viewportHeight: this.canvas.height,
+      worldWidth: defaultWorldWidth || this.canvas.width, // Initial world size
+      worldHeight: defaultWorldHeight || this.canvas.height, // Can be updated by scenes
+    })
+    console.log('IroncladEngine: Main Camera instantiated.')
+
+    this.systems = []
+    this.assetManifestPath = assetManifestPath
+    this.sceneRegistry = sceneRegistry
+    this.gameLoop = new GameLoop(
+      (deltaTime) => this._update(deltaTime),
+      () => this._render(),
+    )
+
+    IroncladEngine.instance = this
+    if (window) {
+      window.gameEngine = this
+      console.log('IroncladEngine: Instance created and assigned to window.gameEngine.')
+    }
+
+    this._registerScenes()
+  }
+
+  // ... _registerScenes, _update, _render, start, stop methods remain the same ...
+  // (Make sure _update calls system updates, _render calls sceneManager.render)
+  /** @private */
+  _registerScenes() {
+    console.log('IroncladEngine: Registering scenes...')
+    for (const sceneName in this.sceneRegistry) {
+      if (Object.hasOwnProperty.call(this.sceneRegistry, sceneName)) {
+        const SceneClass = this.sceneRegistry[sceneName]
+        if (typeof SceneClass === 'function') {
+          try {
+            this.sceneManager.add(sceneName, new SceneClass())
+          } catch (e) {
+            console.error(`IroncladEngine: Error instantiating scene "${sceneName}":`, e)
+          }
+        } else {
+          console.warn(
+            `IroncladEngine: Item in sceneRegistry for "${sceneName}" is not a class/constructor.`,
+          )
+        }
+      }
+    }
+  }
+
+  /** @private */
+  _update(deltaTime) {
+    this.sceneManager.update(deltaTime) // Scene logic first
+    for (const systemWrapper of this.systems) {
+      // Then ECS systems
+      const system = systemWrapper.system
+      const requiredComponents = system.constructor.requiredComponents || []
+      let relevantEntities = []
+      if (requiredComponents.length > 0) {
+        relevantEntities = this.entityManager.getEntitiesWithComponents(requiredComponents)
+      }
+      try {
+        system.update(deltaTime, relevantEntities, this)
+      } catch (error) {
+        console.error(`Error in system ${system.constructor.name}.update():`, error, system)
+      }
+    }
+    if (this.effectsManager) {
+      // console.log("[IroncladEngine._update] About to call effectsManager.update(). Active effects before:", this.effectsManager.activeEffects.length);
+      this.effectsManager.update(deltaTime)
+      // console.log("[IroncladEngine._update] Called effectsManager.update(). Active effects after:", this.effectsManager.activeEffects.length);
+    } else {
+      console.error('[IroncladEngine._update] effectsManager is MISSING!')
+    }
+    this.inputManager.update() // Input manager state clear at the end
+    if (this.events) {
+      this.events.emit('engine:update:frameEnd', deltaTime)
+    } else {
+      console.error('[IroncladEngine._update] events (EventManager) is missing!')
+    }
+  }
+
+  /** @private */
+  _render() {
+    if (!this.offscreenContext || !this.context || !this.sceneManager || !this.effectsManager)
+      return
+
+    // 1. Clear the offscreen canvas (main drawing target for scenes)
+    // Scenes themselves might also clear, but good to ensure it here.
+    this.offscreenContext.clearRect(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height)
+    // Or fill with a default background color if your scenes don't always draw a full background
+    // this.offscreenContext.fillStyle = 'black';
+    // this.offscreenContext.fillRect(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height);
+
+    // 2. Have the SceneManager render the current scene(s) TO THE OFFSCREEN CANVAS
+    // Ensure SceneManager's render method uses the context it was given (offscreenContext)
+    this.sceneManager.render() // SceneManager's render method uses this.context, which should be offscreenContext
+
+    // 3. Apply post-processing effects and draw to the main (visible) canvas
+    this.effectsManager.postRender(this.context, this.offscreenCanvas)
+
+    // 4. Render any top-level UI that should NOT be affected by screen effects (e.g., debug console)
+    // Example: if (this.debugOverlay) this.debugOverlay.render(this.context);
+  }
+
+  start(initialSceneName, initialSceneData = {}) {
+    if (!this.sceneManager.scenes[initialSceneName]) {
+      const errorMsg = `IroncladEngine: Cannot start. Initial scene "${initialSceneName}" not found. Available: ${Object.keys(this.sceneManager.scenes).join(', ')}`
+      console.error(errorMsg)
+      throw new Error(errorMsg)
+    }
+    this.sceneManager.switchTo(initialSceneName, { ...initialSceneData, engine: this }) // Ensure engine is passed to initial scene's initialize
+    this.gameLoop.start()
+    console.log(`IroncladEngine: Started with initial scene "${initialSceneName}".`)
+  }
+
+  stop() {
+    this.gameLoop.stop()
+    console.log('IroncladEngine: Stopped.')
+  }
+
+  // --- Public API Getters ---
+  getOffscreenCanvas() {
+    return this.offscreenCanvas
+  } // Optional getter
+  getOffscreenContext() {
+    return this.offscreenContext
+  } // Optional getter
+  getEffectsManager() {
+    return this.effectsManager
+  } // Optional getter
+  getAssetLoader() {
+    return this.assetLoader
+  }
+  getInputManager() {
+    return this.inputManager
+  }
+  getSceneManager() {
+    return this.sceneManager
+  }
+  getEventManager() {
+    return this.events
+  }
+  getEntityManager() {
+    return this.entityManager
+  }
+  getPrefabManager() {
+    return this.prefabManager
+  }
+  getSaveLoadManager() {
+    return this.saveLoadManager
+  }
+  getCanvas() {
+    return this.canvas
+  }
+  getContext() {
+    return this.context
+  }
+  getGameLoop() {
+    return this.gameLoop
+  }
+  getAssetManifestPath() {
+    return this.assetManifestPath
+  }
+  getCamera() {
+    return this.camera
+  } // 3. Add getter for Camera
+
+  // --- System Management API ---
+  registerSystem(systemInstance, priority = 0) {
+    /* ... as before ... */
+    if (!systemInstance || typeof systemInstance.update !== 'function') {
+      console.error('IroncladEngine.registerSystem: Invalid system instance.', systemInstance)
+      return
+    }
+    if (this.systems.some((sWrapper) => sWrapper.system === systemInstance)) {
+      console.warn(
+        `IroncladEngine: System "${systemInstance.constructor.name}" is already registered.`,
+      )
+      return
+    }
+    if (typeof systemInstance.initialize === 'function') {
+      systemInstance.initialize(this)
+    }
+    this.systems.push({ system: systemInstance, priority: priority })
+    this.systems.sort((a, b) => a.priority - b.priority)
+    console.log(
+      `IroncladEngine: System "${systemInstance.constructor.name}" registered with priority ${priority}.`,
+    )
+  }
+
+  unregisterSystem(systemInstance) {
+    /* ... as before ... */
+    const initialLength = this.systems.length
+    this.systems = this.systems.filter((sWrapper) => sWrapper.system !== systemInstance)
+    if (this.systems.length &lt; initialLength) {
+      if (typeof systemInstance.shutdown === 'function') {
+        systemInstance.shutdown()
+      }
+      console.log(`IroncladEngine: System "${systemInstance.constructor.name}" unregistered.`)
+    } else {
+      console.warn(
+        `IroncladEngine.unregisterSystem: System "${systemInstance.constructor.name}" not found.`,
+      )
+    }
+  }
+
+  /**
+   * Retrieves a registered system instance by its class.
+   * @param {Function} SystemClass - The class of the system to retrieve.
+   * @returns {System | null} The system instance, or null if not found.
+   */
+  getSystem(SystemClass) {
+    // 4. Add getSystem method
+    const wrapper = this.systems.find((sw) => sw.system instanceof SystemClass)
+    return wrapper ? wrapper.system : null
+  }
+}
+
+export default IroncladEngine
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 19:48:24 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
