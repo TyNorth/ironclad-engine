@@ -1,0 +1,263 @@
+// src/engine/ui/Slider.js
+import BaseUIElement from './BaseUIElement.js'
+import Label from './Label.js' // For displaying the value
+
+/**
+ * @class Slider
+ * @extends BaseUIElement
+ * @description An interactive UI element for selecting a value within a range by dragging a thumb.
+ */
+class Slider extends BaseUIElement {
+  /**
+   * Creates an instance of Slider.
+   * @param {object} options - Configuration options for the slider.
+   * @param {number} [options.x=0] - The x-coordinate.
+   * @param {number} [options.y=0] - The y-coordinate.
+   * @param {number} [options.width=200] - The length of the slider track for a horizontal slider, or width if vertical.
+   * @param {number} [options.height=20] - The thickness of the slider track for a horizontal slider, or height if vertical. (This is for the main clickable area)
+   * @param {number} [options.minValue=0] - The minimum value of the slider.
+   * @param {number} [options.maxValue=100] - The maximum value of the slider.
+   * @param {number} [options.currentValue=options.minValue] - The initial value of the slider.
+   * @param {number} [options.step=1] - The increment step for the slider's value. Use 0 for continuous.
+   * @param {string} [options.orientation='horizontal'] - 'horizontal' or 'vertical'.
+   * @param {string} [options.trackColor='#555555'] - Color of the slider track.
+   * @param {string} [options.thumbColor='dodgerblue'] - Color of the slider thumb.
+   * @param {string} [options.hoverThumbColor='deepskyblue'] - Color of the thumb when hovered.
+   * @param {string} [options.pressedThumbColor='royalblue'] - Color of the thumb when pressed/dragged.
+   * @param {number} [options.thumbWidth=10] - Width of the thumb for a horizontal slider.
+   * @param {number} [options.thumbHeight=20] - Height of the thumb for a horizontal slider. (Should be >= track height)
+   * @param {boolean} [options.showValueText=false] - Whether to display the current value as text.
+   * @param {string} [options.valueTextFont='12px sans-serif'] - Font for the value text.
+   * @param {string} [options.valueTextColor='white'] - Color for the value text.
+   * @param {function(number): string} [options.valueTextFormatFunction] - Formats the value text. Receives (currentValue).
+   * @param {function(number): void} [options.onValueChanged] - Callback when the value changes. Receives (newValue).
+   * @param {boolean} [options.visible=true]
+   * @param {boolean} [options.enabled=true]
+   * @param {string} [options.id]
+   */
+  constructor(options = {}) {
+    // BaseUIElement's width/height will represent the main track's clickable area
+    super(options)
+
+    this.minValue = options.minValue || 0
+    this.maxValue = options.maxValue !== undefined ? options.maxValue : 100
+    this.step = options.step !== undefined ? options.step : 1 // 0 or null for continuous
+    this.currentValue = options.currentValue !== undefined ? options.currentValue : this.minValue
+    this.currentValue = this._snapToStep(this._clampValue(this.currentValue))
+
+    this.orientation = options.orientation || 'horizontal'
+    this.trackColor = options.trackColor || '#555555'
+    this.thumbColor = options.thumbColor || 'dodgerblue'
+    this.hoverThumbColor = options.hoverThumbColor || 'deepskyblue'
+    this.pressedThumbColor = options.pressedThumbColor || 'royalblue'
+    this.disabledColor = options.disabledColor || '#333333'
+    this.disabledThumbColor = options.disabledThumbColor || '#444444'
+
+    // Thumb dimensions
+    // For horizontal: width is its thickness across track, height is its visual height
+    // For vertical: width is its visual width, height is its thickness across track
+    if (this.orientation === 'horizontal') {
+      this.thumbWidth = options.thumbWidth || 10
+      this.thumbHeight = options.thumbHeight || this.height // Default to track height
+    } else {
+      // vertical
+      this.thumbWidth = options.thumbWidth || this.width // Default to track width
+      this.thumbHeight = options.thumbHeight || 10
+    }
+
+    this.showValueText = options.showValueText || false
+    this.valueTextFont = options.valueTextFont || '12px sans-serif'
+    this.valueTextColor = options.valueTextColor || 'white'
+    this.valueTextFormatFunction =
+      options.valueTextFormatFunction || ((value) => `${Math.round(value)}`)
+
+    this.onValueChanged = options.onValueChanged || null
+
+    this.isDragging = false
+    this.isHoveredOnThumb = false
+
+    this._thumbRect = { x: 0, y: 0, width: 0, height: 0 } // Internal, for hit detection
+    this._updateThumbRect()
+  }
+
+  _clampValue(value) {
+    return Math.max(this.minValue, Math.min(value, this.maxValue))
+  }
+
+  _snapToStep(value) {
+    if (this.step > 0) {
+      return Math.round((value - this.minValue) / this.step) * this.step + this.minValue
+    }
+    return value
+  }
+
+  /**
+   * Calculates the thumb's current rectangle based on currentValue.
+   * @private
+   */
+  _updateThumbRect() {
+    const valueRatio = (this.currentValue - this.minValue) / (this.maxValue - this.minValue || 1)
+    if (this.orientation === 'horizontal') {
+      const trackInnerWidth = this.width - this.thumbWidth // Available travel distance for thumb's center
+      const thumbCenterX = this.x + this.thumbWidth / 2 + trackInnerWidth * valueRatio
+      this._thumbRect.x = thumbCenterX - this.thumbWidth / 2
+      this._thumbRect.y = this.y + this.height / 2 - this.thumbHeight / 2 // Center thumb on track
+      this._thumbRect.width = this.thumbWidth
+      this._thumbRect.height = this.thumbHeight
+    } else {
+      // Vertical
+      const trackInnerHeight = this.height - this.thumbHeight // Available travel distance
+      const thumbCenterY = this.y + this.thumbHeight / 2 + trackInnerHeight * valueRatio
+      this._thumbRect.x = this.x + this.width / 2 - this.thumbWidth / 2 // Center thumb on track
+      this._thumbRect.y = thumbCenterY - this.thumbHeight / 2
+      this._thumbRect.width = this.thumbWidth
+      this._thumbRect.height = this.thumbHeight
+    }
+  }
+
+  _pixelToValue(pixelPos) {
+    let ratio = 0
+    if (this.orientation === 'horizontal') {
+      const trackInnerWidth = this.width - this.thumbWidth
+      // Convert mouseX to position of thumb's center relative to track start for thumb's center
+      const thumbCenterRelativeX = Math.max(
+        0,
+        Math.min(pixelPos.x - (this.x + this.thumbWidth / 2), trackInnerWidth),
+      )
+      ratio = trackInnerWidth > 0 ? thumbCenterRelativeX / trackInnerWidth : 0
+    } else {
+      // Vertical
+      const trackInnerHeight = this.height - this.thumbHeight
+      const thumbCenterRelativeY = Math.max(
+        0,
+        Math.min(pixelPos.y - (this.y + this.thumbHeight / 2), trackInnerHeight),
+      )
+      ratio = trackInnerHeight > 0 ? thumbCenterRelativeY / trackInnerHeight : 0
+    }
+    let value = this.minValue + (this.maxValue - this.minValue) * ratio
+    return this._snapToStep(this._clampValue(value))
+  }
+
+  setValue(value, triggerCallback = true) {
+    const clampedValue = this._clampValue(value)
+    const snappedValue = this._snapToStep(clampedValue)
+    if (this.currentValue !== snappedValue) {
+      this.currentValue = snappedValue
+      this._updateThumbRect()
+      if (this.onValueChanged && triggerCallback) {
+        this.onValueChanged(this.currentValue)
+      }
+    }
+  }
+
+  update(deltaTime, engine, mousePos) {
+    super.update(deltaTime, engine, mousePos)
+    if (!this.visible || !this.enabled) {
+      this.isDragging = false
+      this.isHoveredOnThumb = false
+      return
+    }
+
+    const inputManager = engine.inputManager
+    const leftButton = inputManager.constructor.MOUSE_BUTTON_LEFT
+
+    this.isHoveredOnThumb = this.containsPoint(mousePos.x, mousePos.y, this._thumbRect)
+    const isHoveredOnTrack = this.containsPoint(mousePos.x, mousePos.y) // Check hover on whole element
+
+    if (inputManager.isMouseButtonJustPressed(leftButton)) {
+      if (this.isHoveredOnThumb) {
+        this.isDragging = true
+      } else if (isHoveredOnTrack) {
+        // Clicked on track, not thumb
+        const newValue = this._pixelToValue(mousePos)
+        this.setValue(newValue)
+        this.isDragging = true // Allow dragging immediately from new position
+      }
+    }
+
+    if (this.isDragging) {
+      if (inputManager.isMouseButtonPressed(leftButton)) {
+        const newValue = this._pixelToValue(mousePos)
+        this.setValue(newValue) // setValue calls _updateThumbRect and callback
+      } else {
+        // Mouse button released
+        this.isDragging = false
+      }
+    }
+  }
+
+  /**
+   * Overloaded containsPoint to check against a specific rect (for thumb).
+   * @param {number} px
+   * @param {number} py
+   * @param {object} [rect=this] - The rectangle to check against (defaults to the element itself).
+   * @returns {boolean}
+   */
+  containsPoint(px, py, rect = this) {
+    return px >= rect.x && px <= rect.x + rect.width && py >= rect.y && py <= rect.y + rect.height
+  }
+
+  _drawSelf(context, engine) {
+    const currentTrackColor = !this.enabled ? this.disabledColor : this.trackColor
+    let currentThumbColor = !this.enabled ? this.disabledThumbColor : this.thumbColor
+
+    if (this.enabled) {
+      if (this.isDragging) {
+        currentThumbColor = this.pressedThumbColor
+      } else if (this.isHoveredOnThumb && this.hoverThumbColor) {
+        currentThumbColor = this.hoverThumbColor
+      }
+    }
+
+    // Draw Track
+    context.fillStyle = currentTrackColor
+    if (this.orientation === 'horizontal') {
+      const trackVisualY = this.y + this.height / 2 - (this.options.trackVisualThickness || 4) / 2
+      const trackVisualThickness = this.options.trackVisualThickness || Math.min(this.height / 2, 4)
+      context.fillRect(this.x, trackVisualY, this.width, trackVisualThickness)
+    } else {
+      // Vertical
+      const trackVisualX = this.x + this.width / 2 - (this.options.trackVisualThickness || 4) / 2
+      const trackVisualThickness = this.options.trackVisualThickness || Math.min(this.width / 2, 4)
+      context.fillRect(trackVisualX, this.y, trackVisualThickness, this.height)
+    }
+
+    // Draw Thumb
+    this._updateThumbRect() // Ensure thumb rect is up-to-date before drawing
+    context.fillStyle = currentThumbColor
+    context.fillRect(
+      this._thumbRect.x,
+      this._thumbRect.y,
+      this._thumbRect.width,
+      this._thumbRect.height,
+    )
+    // Optional: Draw border around thumb
+    // context.strokeStyle = 'black';
+    // context.strokeRect(this._thumbRect.x, this._thumbRect.y, this._thumbRect.width, this._thumbRect.height);
+
+    // Draw Value Text
+    if (this.showValueText) {
+      context.font = this.valueTextFont
+      context.fillStyle = !this.enabled ? this.disabledColor : this.valueTextColor
+      context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      const textToDisplay = this.valueTextFormatFunction(this.currentValue)
+      if (this.orientation === 'horizontal') {
+        context.fillText(
+          textToDisplay,
+          this.x + this.width + 10 + context.measureText(textToDisplay).width / 2,
+          this.y + this.height / 2,
+        )
+      } else {
+        // Vertical
+        context.fillText(
+          textToDisplay,
+          this.x + this.width / 2,
+          this.y + this.height + 10 + parseFloat(this.valueTextFont) / 2,
+        )
+      }
+    }
+  }
+}
+
+export default Slider
