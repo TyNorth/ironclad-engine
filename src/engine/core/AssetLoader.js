@@ -18,6 +18,9 @@ class AssetLoader {
     this.loadQueue = []
     /** @type {number} */
     this.loadedCount = 0
+
+    /** @private @type {AudioContext | null} Web Audio API context for decoding audio. */
+    this.audioContext = null
     /** @type {number} */
     this.totalCountInCurrentBatch = 0 // Renamed for clarity
     /** @private @type {string | null} */
@@ -26,6 +29,23 @@ class AssetLoader {
     console.log('AssetLoader: Initialized.')
   }
 
+  /**
+   * Gets the global AudioContext, creating it if it doesn't exist.
+   * @private
+   * @returns {AudioContext | null}
+   */
+  _getAudioContext() {
+    if (!this.audioContext) {
+      try {
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)()
+        // console.log("AssetLoader: AudioContext initialized.");
+      } catch (e) {
+        console.error('AssetLoader: Web Audio API is not supported in this browser.', e)
+        return null
+      }
+    }
+    return this.audioContext
+  }
   /** @private */
   _getEventManager() {
     if (window.gameEngine && typeof window.gameEngine.getEventManager === 'function') {
@@ -64,6 +84,22 @@ class AssetLoader {
       return this
     }
     this.loadQueue.push({ type: 'json', name, path, group })
+    return this
+  }
+
+  /**
+   * Queues an audio file for loading.
+   * @param {string} name - A unique name to identify the asset.
+   * @param {string} path - The path to the audio file.
+   * @param {string} [group='global'] - An optional group name for the asset.
+   * @returns {this}
+   */
+  queueAudio(name, path, group = 'global') {
+    if (this.cache.has(name) || this.loadQueue.find((asset) => asset.name === name)) {
+      // console.warn(`AssetLoader: Audio asset "${name}" already cached or queued. Skipping.`);
+      return this
+    }
+    this.loadQueue.push({ type: 'audio', name, path, group })
     return this
   }
 
@@ -192,6 +228,80 @@ class AssetLoader {
     })
   }
 
+  _emitProgress(assetName, assetPath, group, status) {
+    const eventManager = this._getEventManager()
+    if (eventManager) {
+      eventManager.emit('asset:progress', {
+        loaded: this.processedInBatchCount, // Use processed count for progress
+        total: this.totalCountInCurrentBatch,
+        assetName,
+        assetPath,
+        group,
+        status,
+      })
+    }
+  }
+
+  /**
+   * @private
+   * Loads an audio asset and decodes it into an AudioBuffer.
+   * @param {string} name - The unique name/key for this asset.
+   * @param {string} path - The URL path to the audio file.
+   * @param {string} group - The asset group.
+   * @returns {Promise<AudioBuffer>} A promise that resolves with the decoded AudioBuffer.
+   */
+  async _loadAudio(name, path, group) {
+    const eventManager = this._getEventManager()
+
+    if (this.cache.has(name)) {
+      const cachedAsset = this.cache.get(name)
+      if (cachedAsset instanceof AudioBuffer) {
+        this.processedInBatchCount++
+        this._emitProgress(name, path, group, 'cached')
+        return cachedAsset
+      } else {
+        console.warn(`AssetLoader: Asset "${name}" in cache is not an AudioBuffer. Re-loading.`)
+      }
+    }
+
+    const audioCtx = this._getAudioContext()
+    if (!audioCtx) {
+      this.processedInBatchCount++ // Count as processed (error)
+      const error = new Error('Web Audio API not supported. Cannot load audio.')
+      if (eventManager) eventManager.emit('asset:error', { name, path, group, error })
+      this._emitProgress(name, path, group, 'error')
+      return Promise.reject(error)
+    }
+
+    try {
+      // console.log(`AssetLoader: Fetching audio "${name}" from ${path}.`);
+      const response = await fetch(path)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status} for ${path}`)
+      }
+      const arrayBuffer = await response.arrayBuffer()
+      // console.log(`AssetLoader: Decoding audio "${name}".`);
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer)
+
+      this.cache.set(name, audioBuffer)
+      this.processedInBatchCount++
+      // console.log(`AssetLoader: Audio "${name}" loaded and decoded successfully.`);
+      if (eventManager) {
+        eventManager.emit('asset:loaded', { name, path, group, asset: audioBuffer })
+      }
+      this._emitProgress(name, path, group, 'loaded')
+      return audioBuffer
+    } catch (error) {
+      this.processedInBatchCount++ // Count errors as processed
+      console.error(`AssetLoader: Error loading or decoding audio "${name}" from ${path}:`, error)
+      if (eventManager) {
+        eventManager.emit('asset:error', { name, path, group, error })
+      }
+      this._emitProgress(name, path, group, 'error')
+      throw new Error(`Failed to load/decode audio: ${name} at ${path}`)
+    }
+  }
+
   /**
    * Starts loading all queued assets.
    * @param {string} [batchId='defaultBatch'] - An optional identifier for this loading batch.
@@ -200,7 +310,6 @@ class AssetLoader {
    */
   loadAll(batchId = `batch_${Date.now()}`) {
     if (this.loadQueue.length === 0) {
-      // console.log('AssetLoader: No assets in queue to load.');
       const eventManager = this._getEventManager()
       if (eventManager)
         eventManager.emit('asset:batchCompleted', {
@@ -212,16 +321,14 @@ class AssetLoader {
       return Promise.resolve(new Map())
     }
 
-    const currentQueue = [...this.loadQueue] // Process a copy of the queue
-    this.loadQueue = [] // Clear the main queue for next batch
+    const currentQueue = [...this.loadQueue]
+    this.loadQueue = []
 
     this.totalCountInCurrentBatch = currentQueue.length
-    this.loadedCount = 0 // Reset for this batch
+    this.loadedCount = 0
     this.currentBatchId = batchId
 
-    console.log(
-      `AssetLoader: Starting to load batch "${batchId}" with ${this.totalCountInCurrentBatch} asset(s)...`,
-    )
+    // console.log(`AssetLoader: Starting to load batch "${batchId}" with ${this.totalCountInCurrentBatch} asset(s)...`);
     const eventManager = this._getEventManager()
     if (eventManager) {
       eventManager.emit('asset:batchStarted', {
@@ -236,6 +343,9 @@ class AssetLoader {
         loadPromise = this._loadImage(assetToLoad.name, assetToLoad.path, assetToLoad.group)
       } else if (assetToLoad.type === 'json') {
         loadPromise = this._loadJSON(assetToLoad.name, assetToLoad.path, assetToLoad.group)
+      } else if (assetToLoad.type === 'audio') {
+        // Check for 'audio' type
+        loadPromise = this._loadAudio(assetToLoad.name, assetToLoad.path, assetToLoad.group)
       } else {
         console.warn(
           `AssetLoader: Unknown asset type "${assetToLoad.type}" for "${assetToLoad.name}". Skipping.`,
@@ -248,9 +358,8 @@ class AssetLoader {
             group: assetToLoad.group,
             error: err,
           })
-        loadPromise = Promise.reject(err) // Make it fail for Promise.allSettled
+        loadPromise = Promise.reject(err)
       }
-      // Return an object to identify asset name on settlement
       return loadPromise
         .then((asset) => ({ name: assetToLoad.name, status: 'fulfilled', value: asset }))
         .catch((error) => ({ name: assetToLoad.name, status: 'rejected', reason: error }))
@@ -264,11 +373,7 @@ class AssetLoader {
           successfullyLoadedAssets.set(result.name, result.value)
         } else {
           allSucceeded = false
-          // Individual errors already emitted by _loadImage/_loadJSON
-          console.warn(
-            `AssetLoader: Asset "${result.name}" failed to load in batch "${batchId}". Reason:`,
-            result.reason.message,
-          )
+          // console.warn(`AssetLoader: Asset "${result.name}" failed to load in batch "${batchId}". Reason:`, result.reason.message);
         }
       })
 
@@ -282,22 +387,26 @@ class AssetLoader {
       }
 
       if (allSucceeded) {
-        console.log(
-          `AssetLoader: Batch "${batchId}" (${this.loadedCount}/${this.totalCountInCurrentBatch}) loaded successfully.`,
-        )
+        // console.log(`AssetLoader: Batch "${batchId}" (${this.loadedCount}/${this.totalCountInCurrentBatch}) loaded successfully.`);
         return successfullyLoadedAssets
       } else {
-        console.warn(`AssetLoader: Batch "${batchId}" completed with some errors.`)
-        // Resolve with successfully loaded assets, but let handler know via event or a flag if needed
-        return Promise.reject(new Error(`Batch "${batchId}" had loading errors.`))
+        // console.warn(`AssetLoader: Batch "${batchId}" completed with some errors.`);
+        // Even with errors, resolve with what did load, but signal overall failure to the caller of loadAll.
+        return Promise.reject(
+          new Error(`Batch "${batchId}" had loading errors. Some assets may have loaded.`),
+        )
       }
     })
   }
 
+  /**
+   * Retrieves a pre-loaded asset from the cache.
+   * @param {string} name - The name/key of the asset to retrieve.
+   * @returns {HTMLImageElement | object | AudioBuffer | undefined} The cached asset, or undefined if not found.
+   */
   get(name) {
-    /* ... (no changes) ... */
     if (!this.cache.has(name)) {
-      console.warn(`AssetLoader: Asset "${name}" not found in cache. Was it loaded?`)
+      // console.warn(`AssetLoader: Asset "${name}" not found in cache. Was it loaded or loading failed?`);
       return undefined
     }
     return this.cache.get(name)
@@ -315,6 +424,21 @@ class AssetLoader {
         this.totalCountInCurrentBatch > 0 ? this.loadedCount / this.totalCountInCurrentBatch : 0,
     }
   }
+  /**
+   * Checks if all assets currently being loaded have finished loading.
+   * @returns {boolean} True if loadedCount is 0, false otherwise.
+   */
+  isDoneLoading() {
+    return this.loadedCount === 0
+  }
+
+  /**
+   * Gets the current number of assets being loaded.
+   * @returns {number}
+   */
+  getLoadingCount() {
+    return this.totalCountInCurrentBatch - this.loadedCount
+  } // Number of assets *remaining* in current batch
 
   clearCache() {
     /* ... (no changes) ... */
@@ -323,6 +447,19 @@ class AssetLoader {
     this.totalCountInCurrentBatch = 0
     this.loadQueue = []
     console.log('AssetLoader: Cache and queue cleared.')
+  }
+  destroy() {
+    /* ... as before, including audioContext.close() if it exists ... */
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext
+        .close()
+        .then(() => {
+          // console.log("AssetLoader: AudioContext closed during destroy.");
+        })
+        .catch((e) => console.error('AssetLoader: Error closing AudioContext during destroy:', e))
+      this.audioContext = null
+    }
+    this.clearCache()
   }
 }
 
