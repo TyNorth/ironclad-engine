@@ -1,16 +1,23 @@
 // src/game/scenes/OptionsMenuScene.js
-// import InputManager from '../../engine/core/InputManager.js'; // If needed for static constants
+import Label from '../../engine/ui/Label.js'
+import Button from '../../engine/ui/Button.js'
+import Checkbox from '../../engine/ui/Checkbox.js'
+// import Panel from '../../engine/ui/Panel.js'; // Optional, if you want to wrap elements
 
 class OptionsMenuScene {
   constructor() {
     this.engine = null
     this.uiContext = null
 
-    // Define button areas (x, y, width, height)
-    this.volDownButtonRect = { x: 0, y: 0, width: 50, height: 40 }
-    this.volUpButtonRect = { x: 0, y: 0, width: 50, height: 40 }
-    this.hintsToggleButtonRect = { x: 0, y: 0, width: 180, height: 40 }
-    this.backButtonRect = { x: 0, y: 0, width: 150, height: 50 }
+    /** @type {import('../../engine/ui/BaseUIElement.js').default[]} */
+    this.uiElements = []
+
+    this.titleLabel = null
+    this.volumeLabel = null
+    this.volDownButton = null
+    this.volUpButton = null
+    this.hintsCheckbox = null
+    this.backButton = null
     // console.log("OptionsMenuScene: Constructor");
   }
 
@@ -20,185 +27,164 @@ class OptionsMenuScene {
       this.uiContext = data.uiContext
     } else {
       console.warn('OptionsMenuScene: Initialized without a UI Context!')
-      this.uiContext = { volume: 50, difficulty: 'Normal', showHints: true, changesMade: false }
+      // Fallback, though it should always receive a context from PauseScene
+      this.uiContext = {
+        volume: 50,
+        difficulty: 'Normal',
+        showHints: true,
+        changesMade: false,
+      }
     }
+    // Ensure necessary properties exist in uiContext
+    if (this.uiContext.volume === undefined) this.uiContext.volume = 50
+    if (this.uiContext.showHints === undefined) this.uiContext.showHints = true
 
-    // Calculate button positions
     const canvasWidth = engine.canvas.width
     const canvasHeight = engine.canvas.height
     const centerX = canvasWidth / 2
 
-    // Volume controls
-    const volY = canvasHeight / 2 - 60
-    this.volDownButtonRect.x = centerX - 100 - this.volDownButtonRect.width / 2
-    this.volDownButtonRect.y = volY - this.volDownButtonRect.height / 2
-    this.volUpButtonRect.x = centerX + 100 - this.volUpButtonRect.width / 2
-    this.volUpButtonRect.y = volY - this.volUpButtonRect.height / 2
+    this.uiElements = [] // Clear previous elements
 
-    // Hints toggle
-    const hintsY = canvasHeight / 2
-    this.hintsToggleButtonRect.x = centerX - this.hintsToggleButtonRect.width / 2
-    this.hintsToggleButtonRect.y = hintsY - this.hintsToggleButtonRect.height / 2
+    // Title
+    this.titleLabel = new Label({
+      x: centerX,
+      y: canvasHeight / 2 - 180, // Positioned higher
+      text: 'Options Menu',
+      font: '36px sans-serif',
+      textAlign: 'center',
+      textBaseline: 'middle',
+    })
+    this.uiElements.push(this.titleLabel)
 
-    // Back button
-    this.backButtonRect.x = centerX - this.backButtonRect.width / 2
-    this.backButtonRect.y = canvasHeight / 2 + 80
+    let currentY = canvasHeight / 2 - 100
+    const elementSpacing = 60
+    const smallButtonWidth = 50
+    const standardButtonHeight = 40
 
-    // console.log("OptionsMenuScene: Initialized with UI Context:", JSON.stringify(this.uiContext));
-    this.displayCurrentSettings() // For keyboard hints
-  }
+    // Volume Controls
+    this.volumeLabel = new Label({
+      x: centerX,
+      y: currentY,
+      text: `Volume: ${this.uiContext.volume}`,
+      font: '20px sans-serif',
+      textAlign: 'center',
+      textBaseline: 'middle',
+    })
+    this.uiElements.push(this.volumeLabel)
 
-  displayCurrentSettings() {
-    // For keyboard hints
-    if (!this.uiContext) return
-    console.log(`--- Options Menu ---`)
-    console.log(`Current Volume: ${this.uiContext.volume}`)
-    console.log(`Current Difficulty: ${this.uiContext.difficulty}`)
-    console.log(`Show Hints: ${this.uiContext.showHints}`)
-    console.log(`(Keyboard: '1'/'2' Volume, '3' Hints, 'Escape' Back)`)
+    this.volDownButton = new Button({
+      x: centerX - 80 - smallButtonWidth / 2,
+      y: currentY - standardButtonHeight / 2,
+      width: smallButtonWidth,
+      height: standardButtonHeight,
+      text: '-',
+      font: '24px sans-serif',
+      onClick: () => {
+        this.uiContext.volume = Math.max(0, this.uiContext.volume - 10)
+        this.uiContext.changesMade = true
+        this.volumeLabel.setText(`Volume: ${this.uiContext.volume}`) // Update label
+        console.log(`OptionsMenuScene: Volume changed to ${this.uiContext.volume}`)
+      },
+    })
+    this.uiElements.push(this.volDownButton)
+
+    this.volUpButton = new Button({
+      x: centerX + 80 - smallButtonWidth / 2,
+      y: currentY - standardButtonHeight / 2,
+      width: smallButtonWidth,
+      height: standardButtonHeight,
+      text: '+',
+      font: '24px sans-serif',
+      onClick: () => {
+        this.uiContext.volume = Math.min(100, this.uiContext.volume + 10)
+        this.uiContext.changesMade = true
+        this.volumeLabel.setText(`Volume: ${this.uiContext.volume}`) // Update label
+        console.log(`OptionsMenuScene: Volume changed to ${this.uiContext.volume}`)
+      },
+    })
+    this.uiElements.push(this.volUpButton)
+
+    // Hints Checkbox
+    currentY += elementSpacing
+    this.hintsCheckbox = new Checkbox({
+      x: centerX - 100, // Adjust for label length
+      y: currentY - 10, // Center checkbox vertically a bit
+      label: 'Show Hints',
+      isChecked: this.uiContext.showHints,
+      font: '20px sans-serif',
+      boxSize: 20,
+      labelOffset: 10,
+      onClick: () => {
+        this.uiContext.showHints = this.hintsCheckbox.isChecked
+        this.uiContext.changesMade = true
+        console.log('OptionsMenuScene: Show Hints toggled to:', this.uiContext.showHints)
+      },
+    })
+    this.uiElements.push(this.hintsCheckbox)
+
+    // Back Button
+    currentY += elementSpacing + 10
+    this.backButton = new Button({
+      x: centerX - 100, // Standard button width
+      y: currentY,
+      width: 200,
+      height: 50,
+      text: 'Back',
+      onClick: () => {
+        console.log('OptionsMenuScene: Back button clicked.')
+        engine.sceneManager.popScene() // No data needed, changes are in uiContext
+      },
+    })
+    this.uiElements.push(this.backButton)
+
+    // Set engine for all elements
+    this.uiElements.forEach((element) => element.setEngine(engine))
+    // console.log("OptionsMenuScene: Initialized with UI elements.");
   }
 
   update(deltaTime, engine) {
     if (!this.uiContext) return
 
     const mousePos = engine.inputManager.getCanvasMousePosition()
-    const leftMouseButton = engine.inputManager.constructor.MOUSE_BUTTON_LEFT // Access static const
-
-    if (engine.inputManager.isMouseButtonJustPressed(leftMouseButton)) {
-      // Volume Down
-      if (this.isPointInRect(mousePos, this.volDownButtonRect)) {
-        this.uiContext.volume = Math.max(0, this.uiContext.volume - 10)
-        this.uiContext.changesMade = true
-        console.log(`OptionsMenuScene: Volume via click to ${this.uiContext.volume}`)
-        return // Click handled
-      }
-      // Volume Up
-      if (this.isPointInRect(mousePos, this.volUpButtonRect)) {
-        this.uiContext.volume = Math.min(100, this.uiContext.volume + 10)
-        this.uiContext.changesMade = true
-        console.log(`OptionsMenuScene: Volume via click to ${this.uiContext.volume}`)
-        return // Click handled
-      }
-      // Toggle Hints
-      if (this.isPointInRect(mousePos, this.hintsToggleButtonRect)) {
-        this.uiContext.showHints = !this.uiContext.showHints
-        this.uiContext.changesMade = true
-        console.log(`OptionsMenuScene: Show Hints via click to ${this.uiContext.showHints}`)
-        return // Click handled
-      }
-      // Back Button
-      if (this.isPointInRect(mousePos, this.backButtonRect)) {
-        console.log('OptionsMenuScene: Back button clicked.')
-        engine.sceneManager.popScene()
-        return // Click handled
+    for (const element of this.uiElements) {
+      if (element.visible && element.enabled) {
+        element.update(deltaTime, engine, mousePos)
       }
     }
 
-    // Existing Keyboard controls for quick testing
-    if (engine.inputManager.isKeyJustPressed('Digit1')) {
-      this.uiContext.volume = Math.max(0, this.uiContext.volume - 10)
-      this.uiContext.changesMade = true
-      // console.log(`OptionsMenuScene: Volume changed to ${this.uiContext.volume}`);
-      // this.displayCurrentSettings();
-    } else if (engine.inputManager.isKeyJustPressed('Digit2')) {
-      this.uiContext.volume = Math.min(100, this.uiContext.volume + 10)
-      this.uiContext.changesMade = true
-      // console.log(`OptionsMenuScene: Volume changed to ${this.uiContext.volume}`);
-      // this.displayCurrentSettings();
-    } else if (engine.inputManager.isKeyJustPressed('Digit3')) {
-      this.uiContext.showHints = !this.uiContext.showHints
-      this.uiContext.changesMade = true
-      // console.log(`OptionsMenuScene: Show Hints changed to ${this.uiContext.showHints}`);
-      // this.displayCurrentSettings();
-    }
-
+    // Keyboard fallback for "Back"
     if (engine.inputManager.isActionJustPressed('cancel')) {
-      // console.log("OptionsMenuScene: 'cancel' action, popping self.");
+      console.log("OptionsMenuScene: 'cancel' action (keyboard), popping self.")
       engine.sceneManager.popScene()
     }
-  }
-
-  /**
-   * Helper function to check if a point is inside a rectangle.
-   * @param {{x: number, y: number}} point - The point to check.
-   * @param {{x: number, y: number, width: number, height: number}} rect - The rectangle.
-   * @returns {boolean}
-   */
-  isPointInRect(point, rect) {
-    return (
-      point.x >= rect.x &&
-      point.x <= rect.x + rect.width &&
-      point.y >= rect.y &&
-      point.y <= rect.y + rect.height
-    )
+    // Note: Keyboard controls for volume/hints were removed as buttons/checkbox handle this now.
+    // If you want to keep them, you'd add them here, ensuring they also update the UI element state
+    // (e.g., this.volumeLabel.setText(...), this.hintsCheckbox.setChecked(...)).
   }
 
   render(context, engine) {
-    context.fillStyle = 'rgba(30, 30, 30, 0.95)' // Slightly more opaque
+    // Background overlay
+    context.fillStyle = 'rgba(30, 30, 30, 0.95)'
     context.fillRect(0, 0, engine.canvas.width, engine.canvas.height)
 
-    context.fillStyle = 'white'
-    context.font = '36px sans-serif'
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    context.fillText('Options Menu', engine.canvas.width / 2, engine.canvas.height / 2 - 150)
-
-    if (this.uiContext) {
-      const centerX = engine.canvas.width / 2
-      const volY = this.volDownButtonRect.y + this.volDownButtonRect.height / 2
-      const hintsY = this.hintsToggleButtonRect.y + this.hintsToggleButtonRect.height / 2
-
-      // Volume Buttons & Display
-      context.fillStyle = 'rgba(100, 100, 100, 0.7)'
-      context.fillRect(
-        this.volDownButtonRect.x,
-        this.volDownButtonRect.y,
-        this.volDownButtonRect.width,
-        this.volDownButtonRect.height,
-      )
-      context.fillRect(
-        this.volUpButtonRect.x,
-        this.volUpButtonRect.y,
-        this.volUpButtonRect.width,
-        this.volUpButtonRect.height,
-      )
-
-      context.fillStyle = 'white'
-      context.font = '24px sans-serif'
-      context.fillText('-', this.volDownButtonRect.x + this.volDownButtonRect.width / 2, volY)
-      context.fillText('+', this.volUpButtonRect.x + this.volUpButtonRect.width / 2, volY)
-      context.fillText(`Volume: ${this.uiContext.volume}`, centerX, volY)
-
-      // Hints Toggle Button
-      context.fillStyle = 'rgba(100, 100, 100, 0.7)'
-      context.fillRect(
-        this.hintsToggleButtonRect.x,
-        this.hintsToggleButtonRect.y,
-        this.hintsToggleButtonRect.width,
-        this.hintsToggleButtonRect.height,
-      )
-      context.fillStyle = 'white'
-      context.fillText(`Hints: ${this.uiContext.showHints ? 'ON' : 'OFF'}`, centerX, hintsY)
-
-      // Back Button
-      context.fillStyle = 'rgba(120, 100, 100, 0.7)'
-      context.fillRect(
-        this.backButtonRect.x,
-        this.backButtonRect.y,
-        this.backButtonRect.width,
-        this.backButtonRect.height,
-      )
-      context.fillStyle = 'white'
-      context.fillText(
-        'Back',
-        this.backButtonRect.x + this.backButtonRect.width / 2,
-        this.backButtonRect.y + this.backButtonRect.height / 2,
-      )
+    // Render all UI elements
+    for (const element of this.uiElements) {
+      element.render(context, engine)
     }
   }
 
+  async resume(engine, data = {}) {
+    // This scene typically doesn't have other scenes pushed on top of it,
+    // so resume is less critical unless that changes.
+    // console.log("OptionsMenuScene: Resumed (should be rare). Data:", data);
+    // If settings could be changed by a sub-scene of options, refresh UI here:
+    if (this.volumeLabel) this.volumeLabel.setText(`Volume: ${this.uiContext.volume}`)
+    if (this.hintsCheckbox) this.hintsCheckbox.setChecked(!!this.uiContext.showHints, false)
+  }
+
   async unload(engine) {
-    // console.log("OptionsMenuScene: Unloaded. Final UI Context state from this scene's perspective:", JSON.stringify(this.uiContext));
+    // console.log("OptionsMenuScene: Unloaded.");
+    this.uiElements = [] // Clear elements
   }
 }
 

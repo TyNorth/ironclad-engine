@@ -14,6 +14,8 @@ import EntityManager from '../ecs/EntityManager.js'
 import PrefabManager from '../ecs/PrefabManager.js'
 import Camera from '../rendering/Camera.js' // 1. Import Camera
 import SaveLoadManager from './SaveLoadManager.js'
+import EffectsManager from './EffectsManager.js'
+import AudioManager from './AudioManager.js'
 // import System from '../ecs/System.js'; // For type hint in getSystem if using TS/JSDoc extensively
 
 class IroncladEngine {
@@ -78,11 +80,10 @@ class IroncladEngine {
     defaultWorldHeight, // Optional: for initial camera world bounds
   } = {}) {
     if (IroncladEngine.instance) {
-      console.warn('IroncladEngine: Instance already created. Returning existing instance.')
-      return IroncladEngine.instance
+      /* ... singleton check ... */ return IroncladEngine.instance
     }
+    if (!canvas) throw new Error('IroncladEngine: Canvas element or ID must be provided.')
 
-    if (!canvas) throw new Error('IroncladEngine: Canvas element or ID must be provided in config.')
     if (!assetManifestPath)
       throw new Error('IroncladEngine: assetManifestPath must be provided in config.')
     if (!sceneRegistry || Object.keys(sceneRegistry).length === 0) {
@@ -104,18 +105,27 @@ class IroncladEngine {
     this.context = this.canvas.getContext('2d')
     if (!this.context) throw new Error('IroncladEngine: Failed to get 2D rendering context.')
 
+    this.offscreenCanvas = document.createElement('canvas')
+    this.offscreenCanvas.width = width
+    this.offscreenCanvas.height = height
+    this.offscreenContext = this.offscreenCanvas.getContext('2d')
+    if (!this.offscreenContext)
+      throw new Error('IroncladEngine: Failed to get 2D rendering context for offscreen canvas.')
+    console.log('IroncladEngine: Offscreen canvas created.')
+
     // Instantiate core managers
     this.assetLoader = new AssetLoader()
     this.inputManager = new InputManager()
-    this.inputManager.initialize(this.canvas)
+    this.inputManager.initialize(this.canvas, this)
     this.saveLoadManager = new SaveLoadManager(this)
     this.events = new EventManager()
     this.entityManager = new EntityManager()
     this.prefabManager = new PrefabManager(this.entityManager, this.assetLoader)
+    this.effectsManager = new EffectsManager(this)
+    this.audioManager = new AudioManager(this.assetLoader, this.events)
 
     this.sceneManager = new SceneManager()
-    this.sceneManager.setContextAndEngine(this.context, this)
-
+    this.sceneManager.setContextAndEngine(this.offscreenContext, this)
     // 2. Instantiate Camera
     this.camera = new Camera({
       viewportWidth: this.canvas.width,
@@ -182,15 +192,42 @@ class IroncladEngine {
         console.error(`Error in system ${system.constructor.name}.update():`, error, system)
       }
     }
+    if (this.effectsManager) {
+      // console.log("[IroncladEngine._update] About to call effectsManager.update(). Active effects before:", this.effectsManager.activeEffects.length);
+      this.effectsManager.update(deltaTime)
+      // console.log("[IroncladEngine._update] Called effectsManager.update(). Active effects after:", this.effectsManager.activeEffects.length);
+    } else {
+      console.error('[IroncladEngine._update] effectsManager is MISSING!')
+    }
     this.inputManager.update() // Input manager state clear at the end
-    this.events.emit('engine:update:frameEnd', deltaTime)
+    if (this.events) {
+      this.events.emit('engine:update:frameEnd', deltaTime)
+    } else {
+      console.error('[IroncladEngine._update] events (EventManager) is missing!')
+    }
   }
 
   /** @private */
   _render() {
-    // The active scene is responsible for all drawing, including clearing the canvas,
-    // drawing its background, and potentially calling specific render systems.
-    this.sceneManager.render()
+    if (!this.offscreenContext || !this.context || !this.sceneManager || !this.effectsManager)
+      return
+
+    // 1. Clear the offscreen canvas (main drawing target for scenes)
+    // Scenes themselves might also clear, but good to ensure it here.
+    this.offscreenContext.clearRect(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height)
+    // Or fill with a default background color if your scenes don't always draw a full background
+    // this.offscreenContext.fillStyle = 'black';
+    // this.offscreenContext.fillRect(0, 0, this.offscreenCanvas.width, this.offscreenCanvas.height);
+
+    // 2. Have the SceneManager render the current scene(s) TO THE OFFSCREEN CANVAS
+    // Ensure SceneManager's render method uses the context it was given (offscreenContext)
+    this.sceneManager.render() // SceneManager's render method uses this.context, which should be offscreenContext
+
+    // 3. Apply post-processing effects and draw to the main (visible) canvas
+    this.effectsManager.postRender(this.context, this.offscreenCanvas)
+
+    // 4. Render any top-level UI that should NOT be affected by screen effects (e.g., debug console)
+    // Example: if (this.debugOverlay) this.debugOverlay.render(this.context);
   }
 
   start(initialSceneName, initialSceneData = {}) {
@@ -210,6 +247,15 @@ class IroncladEngine {
   }
 
   // --- Public API Getters ---
+  getOffscreenCanvas() {
+    return this.offscreenCanvas
+  } // Optional getter
+  getOffscreenContext() {
+    return this.offscreenContext
+  } // Optional getter
+  getEffectsManager() {
+    return this.effectsManager
+  } // Optional getter
   getAssetLoader() {
     return this.assetLoader
   }

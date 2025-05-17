@@ -198,6 +198,16 @@ class LoadingScene {
           }
         })
       }
+      if (manifest.audio && Array.isArray(manifest.audio)) {
+        manifest.audio.forEach((audioDef) => {
+          if (audioDef.name && audioDef.path && audioDef.type === 'audio') {
+            // Check type
+            this.assetLoader.queueAudio(audioDef.name, audioDef.path, 'global_audio')
+            assetsToLoadCount++
+            // console.log(`LoadingScene: Queued audio asset "${audioDef.name}" from ${audioDef.path}`);
+          }
+        })
+      }
       // TODO: Add other asset types like audio
 
       if (assetsToLoadCount > 0) {

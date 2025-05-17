@@ -11,6 +11,7 @@ import Player from '../entities/Player.js'
 import Sprite from '../../engine/rendering/Sprite.js' // Used by RenderSystem indirectly
 import RenderSystem from '../../engine/ecs/systems/RenderSystem.js'
 import TileLayerRenderer from '@/engine/rendering/TileLayerRenderer.js'
+import TintEffect from '@/engine/fx/TintEffect.js'
 
 class OverworldScene {
   constructor() {
@@ -167,16 +168,34 @@ class OverworldScene {
     const playerStartX = worldWidth / 3
     const playerStartY = worldHeight / 3
     this.player = new Player({
+      entityManager: this.entityManager, // Pass the EntityManager instance
+      engine: this.engine, // Pass the Engine instance
       x: playerStartX,
       y: playerStartY,
-      assetLoader: this.assetLoader,
-      width: 32, // Ensure this matches desired collision footprint
-      height: 32,
+      assetLoader: this.assetLoader, // Player constructor still needs this for sprite info
+      name: 'Ironclad Hero', // Example: pass other Player-specific options
+      hp: 100,
+      maxHp: 100,
+      currentXp: 0,
+      xpToNextLevel: 150,
+      spriteSheetName: 'testPlayer', // Ensure this matches an asset
+      width: 32, // For Collider and SpriteData
+      height: 32, // For Collider and SpriteData
+      // Add any other custom properties defined in Player constructor options here
+      inventory: [
+        // Example initial inventory
+        { id: 'start_potion', name: 'Starter Health Vial', quantity: 2 },
+        { id: 'rusty_dagger', name: 'Rusty Dagger', quantity: 1 },
+      ],
     })
 
     if (this.player) {
       this.camera.setTarget(this.player)
       console.log('OverworldScene: Engine camera target set to player.')
+    }
+
+    if (this.engine.sceneManager && this.player) {
+      this.engine.sceneManager.pushScene('HUDScene', { player: this.player })
     }
 
     this.ecsTestEntities = []
@@ -267,19 +286,116 @@ class OverworldScene {
   }
 
   update(deltaTime, engine) {
-    if (engine.inputManager.isActionJustPressed('togglePause')) {
-      console.log("OverworldScene: 'togglePause' action detected.")
+    if (!this.engine) this.engine = engine
+    if (!this.inputManager && this.engine) this.inputManager = this.engine.getInputManager()
+
+    if (this.inputManager.isKeyJustPressed('KeyL')) {
+      // 'L' for 'Loud Sound'
+      if (this.engine.audioManager) {
+        console.log('Playing SFX: sfx_ui_click')
+        this.engine.audioManager.playSoundEffect('sfx_ui_click')
+      }
+    }
+    if (this.inputManager.isKeyJustPressed('KeyM')) {
+      // 'M' for 'Music'
+      if (this.engine.audioManager) {
+        if (this.engine.audioManager.currentMusicName === 'music_overworld') {
+          console.log('Stopping music')
+          this.engine.audioManager.stopMusic(1) // Fade out over 1 second
+        } else {
+          console.log('Playing music: music_overworld')
+          this.engine.audioManager.playMusic('music_overworld', true, 0.5, 1) // Loop, 50% vol, 1s fade-in
+        }
+      }
+    }
+
+    if (this.inputManager && this.inputManager.isKeyJustPressed('KeyT')) {
+      // Example: 'T' key for Tint
+      console.log('OverworldScene: Triggering screen tint.')
+      if (this.engine.effectsManager) {
+        // Toggle a blue tint
+        if (
+          this.engine.effectsManager.persistentTintEffect &&
+          this.engine.effectsManager.persistentTintEffect.opacity > 0
+        ) {
+          this.engine.effectsManager.clearTint()
+        } else {
+          this.engine.effectsManager.tint('rgba(0, 0, 255, 0.3)', 0.3) // Blue tint at 30% opacity
+        }
+      }
+    }
+
+    if (this.inputManager && this.inputManager.isKeyJustPressed('KeyY')) {
+      // Example: 'Y' key for Timed Red Tint
+      console.log('OverworldScene: Triggering timed red screen tint.')
+      if (this.engine.effectsManager) {
+        // This will add a new TintEffect instance separate from the persistent one
+        const timedRedTint = new TintEffect({
+          engine: this.engine,
+          color: 'rgba(255, 0, 0, 0.5)',
+          opacity: 0.5,
+          duration: 2000, // 2 seconds
+        })
+        this.engine.effectsManager.addEffect(timedRedTint)
+      }
+    }
+
+    if (this.inputManager && this.inputManager.isKeyJustPressed('KeyF')) {
+      // Example: 'F' key
+      console.log('OverworldScene: Triggering screen flash.')
+      if (this.engine.effectsManager) {
+        // Test with default white flash
+        // this.engine.effectsManager.flash();
+
+        // Test with a red flash
+        this.engine.effectsManager.flash('rgba(255, 0, 0, 0.6)', 500, 0.6, true)
+      }
+    }
+
+    if (this.inputManager && this.inputManager.isActionJustPressed('testShake')) {
+      console.log("OverworldScene: 'testShake' action (K key) detected. Triggering screen shake.")
+      if (this.engine.effectsManager) {
+        // Example 1: Default shake (intensity 10, duration 500ms, decay true)
+        // this.engine.effectsManager.shake();
+
+        // Example 2: Stronger, shorter shake with decay
+        // this.engine.effectsManager.shake(25, 300, true);
+
+        // Example 3: Mild, longer shake without decay (constant intensity until end)
+        this.engine.effectsManager.shake(1, 1000, true)
+
+        // Example 4: Very short, intense shake
+        // this.engine.effectsManager.shake(30, 150);
+      } else {
+        console.warn('OverworldScene: effectsManager not found on engine instance.')
+      }
+    }
+    if (engine.inputManager.isActionJustPressed('toggleInventory')) {
+      console.log("OverworldScene: 'toggleInventory' action detected.")
 
       // Reset changesMade flag for the new UI session
       this.gameSettings.changesMade = false
 
-      console.log(
-        'OverworldScene: Pushing PauseScene, passing direct gameSettings as uiContext:',
-        JSON.stringify(this.gameSettings),
-      )
+      console.log('OverworldScene: Pushing InventoryScene.')
+      const playerInventory = this.player && this.player.inventory ? this.player.inventory : []
+      const dataForInventory = {
+        inventoryItems: playerInventory,
+      }
+      console.log('[OverworldScene] Data for InventoryScene:', JSON.stringify(dataForInventory))
 
       // Pass the actual this.gameSettings object as the uiContext
-      engine.sceneManager.pushScene('PauseScene', { uiContext: this.gameSettings })
+      engine.sceneManager.pushScene('InventoryScene', dataForInventory)
+      return
+    }
+
+    if (this.inputManager && this.inputManager.isActionJustPressed('togglePause')) {
+      this.gameSettings.changesMade = false
+      const uiContextForPause = {
+        ...this.gameSettings,
+        playerName: this.player ? this.player.name : this.gameSettings.playerName,
+        isMuted: this.gameSettings.isMuted || false,
+      }
+      this.engine.sceneManager.pushScene('PauseScene', { uiContext: uiContextForPause })
       return
     }
 
@@ -315,8 +431,8 @@ class OverworldScene {
   }
 
   render(context, engine) {
-    if (!this.canvas || !this.camera || !engine) return
-
+    if (!this.engine) this.engine = engine // Ensure engine reference
+    if (!this.camera || !this.engine.canvas) return
     context.fillStyle = '#000000'
     context.fillRect(0, 0, this.canvas.width, this.canvas.height)
 

@@ -104,10 +104,11 @@ class AnimationSystem extends System {
         renderable.sWidth = tileWidth
         renderable.sHeight = tileHeight
 
-        // CRITICAL LOG: What values are being set on RenderableSprite?
+        /* CRITICAL LOG: What values are being set on RenderableSprite?
         console.log(
           `[AnimationSystem] Entity ${entityId}, Anim: "${anim.currentAnimation}", FrameValue: ${frameValueFromArray}, CurrentFrameIdx: ${anim.currentFrameIndex} => Set Renderable: sx=${renderable.sx}, sy=${renderable.sy}, sW=${renderable.sWidth}, sH=${renderable.sHeight}`,
         )
+          */
       } else {
         console.warn(
           `[AnimationSystem] Entity ${entityId}: Animation "${anim.currentAnimation}" has invalid tileWidth, tileHeight, columns, or frameValueFromArray is undefined. FrameValue: ${frameValueFromArray}, tileW: ${tileWidth}, tileH: ${tileHeight}, cols: ${columns}`,

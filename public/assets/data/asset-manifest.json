@@ -6,10 +6,27 @@
     { "name": "testPlayer", "path": "/assets/images/test_image.png" },
     { "name": "playerWalkSheet", "path": "/assets/images/sprites/player_walk_sheet.png" }
   ],
+
   "jsonFiles": [
     { "name": "testMapData", "path": "/assets/data/maps/test_map.json" },
     { "name": "gameConfig", "path": "/assets/data/test_data.json" },
     { "name": "entityPrefabs", "path": "/assets/data/prefabs/prefabs.json" }
   ],
-  "audio": []
+  "audio": [
+    {
+      "name": "sfx_ui_click",
+      "type": "audio",
+      "path": "/assets/audio/ui/Fantasy_UI.wav"
+    },
+    {
+      "name": "sfx_player_hit",
+      "type": "audio",
+      "path": "/assets/audio/ui/Fantasy_UI.wav"
+    },
+    {
+      "name": "music_overworld",
+      "type": "audio",
+      "path": "/assets/audio/ui/Fantasy_UI.wav"
+    }
+  ]
 }

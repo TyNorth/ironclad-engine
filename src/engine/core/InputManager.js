@@ -7,6 +7,39 @@
 
 import Keyboard from './Keyboard.js' // Assuming Keyboard.js is in the same directory
 import Mouse from './Mouse.js' // Assuming Mouse.js is in the same directory
+import GamepadHandler from './Gamepad.js'
+
+/**
+ * @typedef {object} KeyBinding
+ * @property {'key'} type
+ * @property {string} code - The event.code for the keyboard key.
+ */
+
+/**
+ * @typedef {object} MouseBinding
+ * @property {'mouse'} type
+ * @property {number} button - The mouse button code (e.g., InputManager.MOUSE_BUTTON_LEFT).
+ */
+
+/**
+ * @typedef {object} GamepadButtonBinding
+ * @property {'gamepadButton'} type
+ * @property {number} buttonIndex - The index of the gamepad button.
+ * @property {number} [padIndex=0] - The index of the gamepad (defaulting to 0).
+ */
+
+/**
+ * @typedef {object} GamepadAxisBinding
+ * @property {'gamepadAxis'} type
+ * @property {number} axisIndex - The index of the gamepad axis.
+ * @property {number} direction - The direction to check for: 1 for positive, -1 for negative.
+ * @property {number} [threshold=0.5] - The value the axis must exceed.
+ * @property {number} [padIndex=0] - The index of the gamepad (defaulting to 0).
+ */
+
+/**
+ * @typedef {KeyBinding | MouseBinding | GamepadButtonBinding | GamepadAxisBinding} InputBinding
+ */
 
 /**
  * @class InputManager
@@ -14,16 +47,24 @@ import Mouse from './Mouse.js' // Assuming Mouse.js is in the same directory
  * and handles abstract input actions mapped to physical keys.
  * Call `initialize(canvas)` once, then `update()` once per game frame.
  */
+
+let padIndexBtn
+let padIndexAxis
+let axisVal
+let threshold
+let direction
 class InputManager {
   constructor() {
     /** @private @type {Keyboard} Handles keyboard input */
     this.keyboard = new Keyboard()
     /** @private @type {Mouse} Handles mouse input */
     this.mouse = new Mouse()
+    /** @private @type {GamepadHandler} Handles gamepad input */ // ADD THIS
+    this.gamepadHandler = new GamepadHandler(this) // ADD THIS (pass 'this' for potential engine access)
 
     // --- Action Mapping Properties (remain from your original InputManager) ---
-    /** @private @type {Map<string, Set<string>>} Maps action names to a Set of their bound KEYBOARD input codes */
-    this.actionToCodesMap = new Map()
+    /** @private @type {Map<string, Array<InputBinding>>} Maps action names to an array of their InputBinding objects. */ // MODIFIED THIS
+    this.actionToBindingsMap = new Map()
     /** @private @type {Map<string, string[]>} Maps KEYBOARD input codes back to a list of action names */
     this.codeToActionsMap = new Map()
     /** @private @type {Map<string, {pressed: boolean, justPressed: boolean, justReleased: boolean}>} Stores action states */
@@ -44,13 +85,42 @@ class InputManager {
   static MOUSE_BUTTON_BROWSER_BACK = Mouse.BUTTON_BROWSER_BACK
   static MOUSE_BUTTON_BROWSER_FORWARD = Mouse.BUTTON_BROWSER_FORWARD
 
+  // --- Static Constants for Gamepad Buttons (exposed via InputManager) ---
+  static GP_BUTTON_A = GamepadHandler.BUTTON_A
+  static GP_BUTTON_B = GamepadHandler.BUTTON_B
+  static GP_BUTTON_X = GamepadHandler.BUTTON_X
+  static GP_BUTTON_Y = GamepadHandler.BUTTON_Y
+  static GP_BUTTON_L1 = GamepadHandler.BUTTON_L1 // Left Bumper
+  static GP_BUTTON_R1 = GamepadHandler.BUTTON_R1 // Right Bumper
+  static GP_BUTTON_L2 = GamepadHandler.BUTTON_L2 // Left Trigger
+  static GP_BUTTON_R2 = GamepadHandler.BUTTON_R2 // Right Trigger
+  static GP_BUTTON_SELECT = GamepadHandler.BUTTON_SELECT // Back/Select
+  static GP_BUTTON_START = GamepadHandler.BUTTON_START // Start/Menu
+  static GP_BUTTON_L3 = GamepadHandler.BUTTON_L3 // Left Stick Press
+  static GP_BUTTON_R3 = GamepadHandler.BUTTON_R3 // Right Stick Press
+  static GP_BUTTON_DPAD_UP = GamepadHandler.BUTTON_DPAD_UP
+  static GP_BUTTON_DPAD_DOWN = GamepadHandler.BUTTON_DPAD_DOWN
+  static GP_BUTTON_DPAD_LEFT = GamepadHandler.BUTTON_DPAD_LEFT
+  static GP_BUTTON_DPAD_RIGHT = GamepadHandler.BUTTON_DPAD_RIGHT
+  static GP_BUTTON_GUIDE = GamepadHandler.BUTTON_GUIDE // Home/Guide
+
+  // --- Static Constants for Gamepad Axes ---
+  static GP_AXIS_LEFT_STICK_X = GamepadHandler.AXIS_LEFT_STICK_X
+  static GP_AXIS_LEFT_STICK_Y = GamepadHandler.AXIS_LEFT_STICK_Y
+  static GP_AXIS_RIGHT_STICK_X = GamepadHandler.AXIS_RIGHT_STICK_X
+  static GP_AXIS_RIGHT_STICK_Y = GamepadHandler.AXIS_RIGHT_STICK_Y
+
   /**
-   * Initializes the InputManager and its sub-modules (Keyboard, Mouse).
+   * Initializes the InputManager and its sub-modules (Keyboard, Mouse, Gamepad).
    * @param {HTMLCanvasElement} canvasElement - The game canvas element (required for Mouse).
+   * @param {import('./IroncladEngine.js').default} [engine] - Optional: engine reference for event emitting by sub-modules.
    */
-  initialize(canvasElement) {
+  initialize(canvasElement, engine = null) {
+    this.engine = engine // Store engine reference if provided (GamepadHandler might use it)
+
     this.keyboard.initialize()
     this.mouse.initialize(canvasElement) // Mouse module needs the canvas
+    this.gamepadHandler.initialize()
 
     // Add listeners specifically for the action mapping system
     // These are separate from the listeners within Keyboard.js for raw state,
@@ -77,7 +147,7 @@ class InputManager {
           // AND at least one of its keys must NOW be considered pressed.
           // The Keyboard module has already updated its state from this same event.
           let isAnyMappedKeyPressed = false
-          const mappedCodes = this.actionToCodesMap.get(actionName)
+          const mappedCodes = this.actionToBindingsMap.get(actionName)
           if (mappedCodes) {
             for (const mappedCode of mappedCodes) {
               // Query the Keyboard module for the current state
@@ -115,7 +185,7 @@ class InputManager {
           // Only process if action was considered pressed
           // Check if any *other* key for this action is still pressed
           let isStillPressedByOtherKey = false
-          const mappedCodes = this.actionToCodesMap.get(actionName)
+          const mappedCodes = this.actionToBindingsMap.get(actionName)
           if (mappedCodes) {
             for (const mappedCode of mappedCodes) {
               // Query the Keyboard module, note: event.code (the released key) will be reported as NOT pressed by keyboard module at this point.
@@ -136,46 +206,134 @@ class InputManager {
   }
 
   /**
-   * Updates all input modules and action states for the next frame.
+   * Updates all input modules and polls all bindings to update action states.
    * Should be called once per game loop frame by the engine.
    */
   update() {
-    this.keyboard.update() // Clears keyboard's justPressed/justReleased sets
-    this.mouse.update() // Clears mouse's justPressed/justReleased sets
+    this.keyboard.update() // Clears keyboard's "just" states
+    this.mouse.update() // Clears mouse's "just" states
+    this.gamepadHandler.update() // Polls gamepads and updates their "just" states
 
-    // Clear "just" states for actions AFTER game logic for the current frame has used them
-    this.actionStates.forEach((state) => {
-      state.justPressed = false
-      state.justReleased = false
+    // Update all action states by polling current input states from modules
+    this.actionToBindingsMap.forEach((bindings, actionName) => {
+      const currentActionState = this.actionStates.get(actionName)
+      if (!currentActionState) return
+
+      const oldPressedState = currentActionState.pressed
+      let newPressedState = false
+      let highestActionValue = 0 // For analog actions, take the strongest input
+
+      for (const binding of bindings) {
+        let bindingIsActive = false
+        let bindingValue = 0
+
+        switch (binding.type) {
+          case 'key':
+            bindingIsActive = this.keyboard.isKeyPressed(binding.code)
+            if (bindingIsActive) bindingValue = 1 // Digital input
+            break
+          case 'mouse': // Assuming you might want to map mouse buttons to actions
+            bindingIsActive = this.mouse.isButtonPressed(binding.button)
+            if (bindingIsActive) bindingValue = 1 // Digital input
+            break
+          case 'gamepadButton':
+            padIndexBtn = binding.padIndex || 0
+            bindingIsActive = this.gamepadHandler.isButtonPressed(padIndexBtn, binding.buttonIndex)
+            if (bindingIsActive) {
+              bindingValue = this.gamepadHandler.getButtonValue(padIndexBtn, binding.buttonIndex)
+              // Ensure digital button presses (like D-pad) contribute a value of 1
+              if (bindingValue === 0 && bindingIsActive) bindingValue = 1.0
+
+              if (actionName.startsWith('move')) {
+                // Conditional log
+                console.log(
+                  `[InputManager] Action: "${actionName}", GamepadBtn[${padIndexBtn}][${binding.buttonIndex}] Active: ${bindingIsActive}, RawValFromGetBtnVal: ${this.gamepadHandler.getButtonValue(padIndexBtn, binding.buttonIndex).toFixed(2)}, EffectiveBindingVal: ${bindingValue.toFixed(2)}`,
+                )
+              }
+            }
+            break
+          case 'gamepadAxis':
+            padIndexAxis = binding.padIndex || 0
+            axisVal = this.gamepadHandler.getAxisValue(padIndexAxis, binding.axisIndex)
+            threshold = binding.threshold === undefined ? 0.3 : binding.threshold
+            direction = binding.direction // Should be 1 (positive) or -1 (negative)
+
+            if (direction > 0 && axisVal >= threshold) {
+              bindingIsActive = true
+              bindingValue =
+                1 - threshold > 0 ? Math.min(1, (axisVal - threshold) / (1 - threshold)) : 1
+            } else if (direction < 0 && axisVal <= -threshold) {
+              bindingIsActive = true
+              bindingValue =
+                1 - threshold > 0
+                  ? Math.min(1, (Math.abs(axisVal) - threshold) / (1 - threshold))
+                  : 1
+            }
+            // --- DEBUG LOG FOR GAMEPAD AXIS BINDING ---
+            if (bindingIsActive && actionName.startsWith('move')) {
+              // Log only for move actions
+              console.log(
+                `[InputManager] Action: "${actionName}", GamepadAxis[${padIndexAxis}][${binding.axisIndex}] Raw: ${axisVal.toFixed(2)}, Dir: ${direction}, Thresh: ${threshold}, Active: ${bindingIsActive}, Value: ${bindingValue.toFixed(2)}`,
+              )
+            }
+            break
+        }
+        if (bindingIsActive) {
+          newPressedState = true
+          highestActionValue = Math.max(highestActionValue, bindingValue)
+          // If one binding is active, the action is considered active.
+          // We could break here if we only care about on/off,
+          // but iterating all allows us to get the max analog value.
+        }
+      }
+
+      currentActionState.pressed = newPressedState
+      currentActionState.value = newPressedState ? highestActionValue : 0
+      currentActionState.justPressed = !oldPressedState && newPressedState
+      currentActionState.justReleased = oldPressedState && !newPressedState
     })
   }
 
-  // --- Action Mapping API (Largely Unchanged Internally, still keyboard-focused) ---
-  defineAction(actionName, inputCodes) {
-    // This system currently only maps keyboard event.codes
-    // Future extension: allow binding mouse buttons or gamepad inputs here.
-    if (!Array.isArray(inputCodes) || inputCodes.length === 0) {
-      console.warn(`InputManager: No input codes provided for keyboard action "${actionName}".`)
+  /**
+   * Defines an action and maps it to one or more input bindings.
+   * @param {string} actionName - The unique name for the action (e.g., "moveUp", "fire").
+   * @param {Array<InputBinding>} bindings - An array of binding objects.
+   */
+  defineAction(actionName, bindings) {
+    if (!Array.isArray(bindings) || bindings.length === 0) {
+      console.warn(`InputManager: No bindings provided for action "${actionName}".`)
       return
     }
-    this.actionToCodesMap.set(actionName, new Set(inputCodes))
-    this.actionStates.set(actionName, { pressed: false, justPressed: false, justReleased: false })
+    this.actionToBindingsMap.set(actionName, bindings)
+    // Initialize action state with value field
+    this.actionStates.set(actionName, {
+      pressed: false,
+      justPressed: false,
+      justReleased: false,
+      value: 0,
+    })
 
-    inputCodes.forEach((code) => {
-      if (!this.codeToActionsMap.has(code)) {
-        this.codeToActionsMap.set(code, [])
-      }
-      const actionsForCode = this.codeToActionsMap.get(code)
-      if (!actionsForCode.includes(actionName)) {
-        actionsForCode.push(actionName)
+    // The codeToActionsMap is primarily for keyboard event-driven updates.
+    // With polling in update(), its role might change or diminish for actions.
+    // For now, let's keep it for keyboard bindings for the _onKeyDownForActions.
+    bindings.forEach((binding) => {
+      if (binding.type === 'key') {
+        const code = binding.code
+        if (!this.codeToActionsMap.has(code)) {
+          this.codeToActionsMap.set(code, [])
+        }
+        const actionsForCode = this.codeToActionsMap.get(code)
+        if (!actionsForCode.includes(actionName)) {
+          actionsForCode.push(actionName)
+        }
       }
     })
-    // console.log(`InputManager: Action "${actionName}" defined with codes: [${inputCodes.join(', ')}]`);
+    // console.log(`InputManager: Action "${actionName}" defined with ${bindings.length} binding(s).`);
   }
 
   removeAction(actionName) {
     // ... (implementation from your existing InputManager is fine) ...
-    const codes = this.actionToCodesMap.get(actionName)
+    const codes = this.actionToBindingsMap.get(actionName)
     if (codes) {
       codes.forEach((code) => {
         const actionsForCode = this.codeToActionsMap.get(code)
@@ -186,7 +344,7 @@ class InputManager {
         }
       })
     }
-    this.actionToCodesMap.delete(actionName)
+    this.actionToBindingsMap.delete(actionName)
     this.actionStates.delete(actionName)
     // console.log(`InputManager: Action "${actionName}" removed.`);
   }
@@ -234,22 +392,53 @@ class InputManager {
   isMouseButtonJustReleased(buttonCode) {
     return this.mouse.isButtonJustReleased(buttonCode)
   }
+  // --- Raw Gamepad State API (Delegates to GamepadHandler module) ---
+  getConnectedGamepadCount() {
+    return this.gamepadHandler.getConnectedGamepadCount()
+  }
+  isGamepadButtonPressed(padIndex, buttonIndex) {
+    return this.gamepadHandler.isButtonPressed(padIndex, buttonIndex)
+  }
+  isGamepadButtonJustPressed(padIndex, buttonIndex) {
+    return this.gamepadHandler.isButtonJustPressed(padIndex, buttonIndex)
+  }
+  isGamepadButtonJustReleased(padIndex, buttonIndex) {
+    return this.gamepadHandler.isButtonJustReleased(padIndex, buttonIndex)
+  }
+  getGamepadButtonValue(padIndex, buttonIndex) {
+    return this.gamepadHandler.getButtonValue(padIndex, buttonIndex)
+  }
+  getGamepadAxisValue(padIndex, axisIndex) {
+    return this.gamepadHandler.getAxisValue(padIndex, axisIndex)
+  }
+
+  /**
+   * Gets the analog value of an action (e.g., from an axis or trigger).
+   * Typically ranges from 0 to 1.
+   * @param {string} actionName - The name of the action.
+   * @returns {number}
+   */
+  getActionValue(actionName) {
+    const state = this.actionStates.get(actionName)
+    return state ? state.value : 0
+  }
 
   /**
    * Cleans up event listeners and all input states from sub-modules.
    */
   destroy() {
-    // Remove action-specific listeners
+    // Remove action-specific keyboard listeners
     window.removeEventListener('keydown', this._onKeyDownForActions)
     window.removeEventListener('keyup', this._onKeyUpForActions)
 
     this.keyboard.destroy()
     this.mouse.destroy()
+    this.gamepadHandler.destroy() // ADD THIS LINE
 
-    this.actionToCodesMap.clear()
-    this.codeToActionsMap.clear()
+    this.actionToBindingsMap.clear() // MODIFIED
+    this.codeToActionsMap.clear() // Keep if still used by keyboard action handlers
     this.actionStates.clear()
-    console.log('InputManager: Destroyed. Keyboard and Mouse modules destroyed.')
+    console.log('InputManager: Destroyed. All input modules destroyed.')
   }
 }
 
