@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: rendering/TilemapEngine.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: rendering/TilemapEngine.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/game/scenes/TilemapTestScene.js
+
+/**
+ * @file TilemapTestScene.js
+ * @description Diagnostic scene: Draws a main background image, then attempts to overlay
+ * specific tile layers from Tiled JSON, sourcing tiles from that same background image
+ * treated as a tilesheet.
+ */
+
+class TilemapTestScene {
+  constructor() {
+    /** @private @type {import('../../engine/core/AssetLoader.js').default | null} */
+    this.assetLoader = null
+    /** @private @type {import('../../engine/core/InputManager.js').default | null} */
+    this.inputManager = null
+
+    /** @private @type {HTMLImageElement | null} */
+    this.mapBackgroundImage = null // This will be your tileset.png
+    /** @private @type {object | null} */
+    this.mapJsonData = null
+
+    /** @private @type {number} */
+    this.tileWidth = 32
+    /** @private @type {number} */
+    this.tileHeight = 32
+    /** @private @type {number} */
+    this.tilesheetColumnsForOverlays = 1 // Will be calculated from mapBackgroundImage
+
+    /** @private @type {number} */
+    this.viewportX = 0
+    /** @private @type {number} */
+    this.viewportY = 0
+    /** @private @type {number} */
+    this.scrollSpeed = 200 // pixels per second
+
+    console.log('TilemapTestScene (Diagnostic v2): Constructor called')
+  }
+
+  initialize(context, data = {}) {
+    console.log('TilemapTestScene (Diagnostic v2): Initialized.', data)
+    this.viewportX = 0
+    this.viewportY = 0
+
+    if (window.game &amp;&amp; window.game.assetLoader) {
+      this.assetLoader = window.game.assetLoader
+    } else {
+      console.error('TilemapTestScene (Diagnostic v2): AssetLoader not found!')
+      return
+    }
+
+    if (window.game &amp;&amp; window.game.inputManager) {
+      this.inputManager = window.game.inputManager
+    } else {
+      console.warn('TilemapTestScene (Diagnostic v2): InputManager not found. Scrolling disabled.')
+    }
+
+    this.mapBackgroundImage = this.assetLoader.get('mainTilesetPNG') // Your tileset.png
+    this.mapJsonData = this.assetLoader.get('testMapData')
+
+    if (!this.mapBackgroundImage) {
+      console.error(
+        "TilemapTestScene (Diagnostic v2): Asset 'mainTilesetPNG' (your tileset.png) not found!",
+      )
+    } else {
+      console.log(
+        `TilemapTestScene (Diagnostic v2): mapBackgroundImage loaded: ${this.mapBackgroundImage.width}x${this.mapBackgroundImage.height}`,
+      )
+    }
+    if (!this.mapJsonData) {
+      console.error("TilemapTestScene (Diagnostic v2): Asset 'testMapData' not found!")
+    } else {
+      this.tileWidth = this.mapJsonData.tilewidth || 32
+      this.tileHeight = this.mapJsonData.tileheight || 32
+      console.log(
+        `TilemapTestScene (Diagnostic v2): mapJsonData loaded. Tile dimensions: ${this.tileWidth}x${this.tileHeight}`,
+      )
+    }
+
+    if (this.mapBackgroundImage &amp;&amp; this.mapBackgroundImage.naturalWidth > 0 &amp;&amp; this.tileWidth > 0) {
+      this.tilesheetColumnsForOverlays = Math.floor(
+        this.mapBackgroundImage.naturalWidth / this.tileWidth,
+      )
+      console.log(
+        `TilemapTestScene (Diagnostic v2): Calculated tilesheetColumnsForOverlays for mainTilesetPNG: ${this.tilesheetColumnsForOverlays}`,
+      )
+    } else if (this.mapBackgroundImage) {
+      console.warn(
+        'TilemapTestScene (Diagnostic v2): mainTilesetPNG loaded but tileWidth or image width is invalid for column calculation.',
+      )
+      this.tilesheetColumnsForOverlays = 16 // Fallback to example's 16 if calculation fails
+      console.log(
+        `TilemapTestScene (Diagnostic v2): Using fallback tilesheetColumnsForOverlays: ${this.tilesheetColumnsForOverlays}`,
+      )
+    }
+  }
+
+  update(deltaTime) {
+    if (!this.inputManager) return
+    // ... (scrolling logic for viewportX, viewportY remains the same as previous TilemapTestScene)
+    const moveAmount = this.scrollSpeed * deltaTime
+    if (this.inputManager.isKeyPressed('ArrowLeft') || this.inputManager.isKeyPressed('KeyA'))
+      this.viewportX -= moveAmount
+    if (this.inputManager.isKeyPressed('ArrowRight') || this.inputManager.isKeyPressed('KeyD'))
+      this.viewportX += moveAmount
+    if (this.inputManager.isKeyPressed('ArrowUp') || this.inputManager.isKeyPressed('KeyW'))
+      this.viewportY -= moveAmount
+    if (this.inputManager.isKeyPressed('ArrowDown') || this.inputManager.isKeyPressed('KeyS'))
+      this.viewportY += moveAmount
+
+    if (this.mapBackgroundImage) {
+      const canvasWidth = window.game?.canvas?.width || 0
+      const canvasHeight = window.game?.canvas?.height || 0
+      if (this.mapBackgroundImage.naturalWidth > canvasWidth) {
+        this.viewportX = Math.max(
+          0,
+          Math.min(this.viewportX, this.mapBackgroundImage.naturalWidth - canvasWidth),
+        )
+      } else {
+        this.viewportX = 0
+      }
+      if (this.mapBackgroundImage.naturalHeight > canvasHeight) {
+        this.viewportY = Math.max(
+          0,
+          Math.min(this.viewportY, this.mapBackgroundImage.naturalHeight - canvasHeight),
+        )
+      } else {
+        this.viewportY = 0
+      }
+    }
+  }
+
+  /**
+   * Renders a specific tile layer by sourcing tiles from the main background image.
+   * Uses 1-based GID logic and specified columns for THIS LAYER's tile lookup within the background image.
+   */
+  renderOverlayTileLayer(context, layerName, firstGidForLayerTiles, columnsInSheetForLayerTiles) {
+    if (
+      !this.mapJsonData ||
+      !this.mapBackgroundImage ||
+      !this.mapBackgroundImage.complete ||
+      this.mapBackgroundImage.naturalWidth === 0 ||
+      columnsInSheetForLayerTiles &lt;= 0
+    ) {
+      return
+    }
+
+    const layer = this.mapJsonData.layers.find(
+      (l) => l.name === layerName &amp;&amp; l.type === 'tilelayer' &amp;&amp; l.visible !== false,
+    )
+    if (!layer) {
+      // console.warn(`OverlayLayer "${layerName}" not found or not visible.`);
+      return
+    }
+
+    console.log(
+      `Attempting to render overlay layer: "${layer.name}" with firstGID ${firstGidForLayerTiles} and ${columnsInSheetForLayerTiles} columns.`,
+    )
+
+    const data = layer.data
+    const layerWidthInTiles = layer.width
+    const layerHeightInTiles = layer.height
+
+    const canvasWidth = context.canvas.width
+    const canvasHeight = context.canvas.height
+
+    const startCol = Math.max(0, Math.floor(this.viewportX / this.tileWidth))
+    const endCol = Math.min(
+      layerWidthInTiles,
+      Math.ceil((this.viewportX + canvasWidth) / this.tileWidth),
+    )
+    const startRow = Math.max(0, Math.floor(this.viewportY / this.tileHeight))
+    const endRow = Math.min(
+      layerHeightInTiles,
+      Math.ceil((this.viewportY + canvasHeight) / this.tileHeight),
+    )
+
+    const originalAlpha = context.globalAlpha
+    if (layer.opacity !== undefined &amp;&amp; layer.opacity &lt; 1.0) {
+      context.globalAlpha = originalAlpha * layer.opacity
+    }
+
+    for (let r = startRow; r &lt; endRow; r++) {
+      for (let c = startCol; c &lt; endCol; c++) {
+        const tileIndexInLayer = r * layerWidthInTiles + c
+        const gidWithFlags = data[tileIndexInLayer]
+        if (gidWithFlags === 0) continue
+
+        const FLIPPED_HORIZONTALLY_FLAG = 0x80000000
+        const FLIPPED_VERTICALLY_FLAG = 0x40000000
+        const FLIPPED_DIAGONALLY_FLAG = 0x20000000
+        const cleanGid =
+          gidWithFlags &amp;
+          ~(FLIPPED_HORIZONTALLY_FLAG | FLIPPED_VERTICALLY_FLAG | FLIPPED_DIAGONALLY_FLAG)
+
+        if (cleanGid &lt; firstGidForLayerTiles) continue
+
+        const localId = cleanGid - firstGidForLayerTiles // Make it 0-indexed for this specific tileset definition
+
+        const sx = (localId % columnsInSheetForLayerTiles) * this.tileWidth
+        const sy = Math.floor(localId / columnsInSheetForLayerTiles) * this.tileHeight
+
+        const dx = Math.floor(c * this.tileWidth - this.viewportX)
+        const dy = Math.floor(r * this.tileHeight - this.viewportY)
+
+        if (
+          sx &lt; 0 ||
+          sy &lt; 0 ||
+          sx + this.tileWidth > this.mapBackgroundImage.naturalWidth ||
+          sy + this.tileHeight > this.mapBackgroundImage.naturalHeight
+        ) {
+          // console.warn(`Layer "${layer.name}": GID ${cleanGid} (local ${localId}) -> sx,sy ${sx},${sy} out of bounds for mapBackgroundImage (the main tileset.png).`);
+          continue
+        }
+        if (
+          dx + this.tileWidth &lt; 0 ||
+          dx > canvasWidth ||
+          dy + this.tileHeight &lt; 0 ||
+          dy > canvasHeight
+        ) {
+          continue
+        }
+
+        // ... (flipping/rotation context save/transform/restore logic - same as previous TilemapEngine) ...
+        context.save()
+        const centerX = dx + this.tileWidth / 2
+        const centerY = dy + this.tileHeight / 2
+        context.translate(centerX, centerY)
+        let scaleX = 1,
+          scaleY = 1,
+          rotation = 0
+        const flipH = gidWithFlags &amp; FLIPPED_HORIZONTALLY_FLAG
+        const flipV = gidWithFlags &amp; FLIPPED_VERTICALLY_FLAG
+        const flipD = gidWithFlags &amp; FLIPPED_DIAGONALLY_FLAG
+        if (flipD) {
+          rotation = Math.PI / 2
+          if (flipH &amp;&amp; flipV) {
+            scaleX = 1
+            scaleY = -1
+          } else if (flipH) {
+            scaleX = -1
+            scaleY = -1
+          } else if (flipV) {
+            scaleX = 1
+            scaleY = 1
+          } else {
+            scaleX = -1
+          }
+        } else {
+          if (flipH) scaleX = -1
+          if (flipV) scaleY = -1
+        }
+        if (scaleX !== 1 || scaleY !== 1) context.scale(scaleX, scaleY)
+        if (rotation !== 0) context.rotate(rotation)
+        context.translate(-centerX, -centerY)
+
+        try {
+          context.drawImage(
+            this.mapBackgroundImage, // Source from the main background image
+            sx,
+            sy,
+            this.tileWidth,
+            this.tileHeight,
+            dx,
+            dy,
+            this.tileWidth,
+            this.tileHeight,
+          )
+        } catch (e) {
+          console.error('Error drawing tile for layer', layer.name, e)
+        }
+        context.restore()
+      }
+    }
+    if (layer.opacity !== undefined &amp;&amp; layer.opacity &lt; 1.0) {
+      context.globalAlpha = originalAlpha
+    }
+  }
+
+  render(context) {
+    context.fillStyle = '#000000'
+    context.fillRect(0, 0, context.canvas.width, context.canvas.height)
+
+    // 1. Draw the main map image as a background
+    if (
+      this.mapBackgroundImage &amp;&amp;
+      this.mapBackgroundImage.complete &amp;&amp;
+      this.mapBackgroundImage.naturalWidth > 0
+    ) {
+      context.drawImage(this.mapBackgroundImage, -this.viewportX, -this.viewportY)
+    } else {
+      context.font = '16px Arial'
+      context.fillStyle = 'orange'
+      context.textAlign = 'center'
+      context.fillText(
+        'Map Background Image (mainTilesetPNG) not loaded or invalid.',
+        context.canvas.width / 2,
+        context.canvas.height / 2 - 20,
+      )
+    }
+
+    // 2. Render specific layers tile-by-tile ON TOP
+    if (this.mapJsonData &amp;&amp; this.mapBackgroundImage) {
+      // --- TEST RENDERING FOR "Ground" LAYER ---
+      // From your JSON, "ground.tsx" has firstgid: 2510.
+      // The "Ground" layer itself has GIDs like 87, 45, etc.
+      // This implies GIDs in "Ground" layer are NOT relative to 2510 if they are small numbers.
+      // They are likely relative to a tileset with a smaller firstgid, e.g., "landmass32.tsx" (firstgid: 10)
+      // or they are 1-based indices into a section of your main tileset.png.
+
+      // Let's try "Ground" layer using firstgid from "landmass32.tsx" (firstgid: 10)
+      // and using `this.tilesheetColumnsForOverlays` (calculated from tileset.png width).
+      const groundLayerDef = this.mapJsonData.tilesets.find(
+        (ts) => ts.source &amp;&amp; ts.source.includes('landmass32.tsx'),
+      )
+      const groundFirstGid = groundLayerDef ? groundLayerDef.firstgid : 1 // Fallback to 1 if specific tileset not found
+      this.renderOverlayTileLayer(
+        context,
+        'Ground',
+        groundFirstGid,
+        this.tilesheetColumnsForOverlays,
+      )
+
+      // --- TEST RENDERING FOR "Water" LAYER ---
+      // "Water" layer has GIDs like 2562. "water.tsx" has firstgid: 2514.
+      const waterLayerDef = this.mapJsonData.tilesets.find(
+        (ts) => ts.source &amp;&amp; ts.source.includes('water.tsx'),
+      ) // Or water32.tsx
+      const waterFirstGid = waterLayerDef ? waterLayerDef.firstgid : 1
+      // this.renderOverlayTileLayer(context, "Water", waterFirstGid, this.tilesheetColumnsForOverlays);
+
+      // You can add other layers here similarly, e.g., "Decor", "House", "Trees"
+      // For each, you need to decide the correct `firstgidForLayerTiles` and `columnsInSheetForLayerTiles`
+      // if they are all coming from `this.mapBackgroundImage` (your tileset.png).
+      // The working example used hardcoded 16 columns for "Foreground Objects" and implied firstgid=1.
+
+      // Example for "Decor" if its GIDs are 1-based into tileset.png with 16 columns:
+      // this.renderOverlayTileLayer(context, "Decor", 1, 16);
+    }
+
+    // Debug text for viewport
+    context.font = '12px Arial'
+    context.fillStyle = 'rgba(0,0,0,0.7)'
+    context.fillRect(5, 5, 260, 40)
+    context.fillStyle = 'white'
+    context.textAlign = 'left'
+    context.fillText(
+      `Viewport X: ${this.viewportX.toFixed(0)}, Y: ${this.viewportY.toFixed(0)}`,
+      10,
+      20,
+    )
+    context.fillText(`Scroll: WASD/Arrows. Testing hybrid render.`, 10, 40)
+  }
+
+  unload() {
+    console.log('TilemapTestScene (Diagnostic v2): Unloaded.')
+  }
+}
+
+export default TilemapTestScene
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 20:34:29 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: core/SaveLoadManager.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: core/SaveLoadManager.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/core/SaveLoadManager.js
+
+/**
+ * @file SaveLoadManager.js
+ * @description Manages saving and loading game state using a provider pattern and localStorage.
+ */
+
+const SAVE_FILE_VERSION = '1.0.0'
+const LOCAL_STORAGE_KEY_PREFIX = 'IRONCLAD_SAVE_SLOT_'
+
+class SaveLoadManager {
+  /**
+   * @param {import('./IroncladEngine.js').default} engine - The main engine instance, for event emitting.
+   */
+  constructor(engine) {
+    /** @private @type {import('./IroncladEngine.js').default} */
+    this.engine = engine
+    /**
+     * @private
+     * @type {Map&lt;string, {getSaveData: function(): any, loadSaveData: function(any): void}>}
+     * @description Stores registered data providers. Key is a unique string identifier.
+     * Provider object must have getSaveData() and loadSaveData(data) methods.
+     */
+    this.providers = new Map()
+    // console.log("SaveLoadManager: Constructed.");
+  }
+
+  /**
+   * Registers a data provider with the SaveLoadManager.
+   * @param {string} uniqueKey - A unique key to identify this provider's data in the save file.
+   * @param {{getSaveData: function(): any, loadSaveData: function(any): void}} provider - The provider object.
+   */
+  registerDataProvider(uniqueKey, provider) {
+    if (typeof uniqueKey !== 'string' || !uniqueKey) {
+      console.error('SaveLoadManager.registerDataProvider: uniqueKey must be a non-empty string.')
+      return
+    }
+    if (
+      !provider ||
+      typeof provider.getSaveData !== 'function' ||
+      typeof provider.loadSaveData !== 'function'
+    ) {
+      console.error(
+        `SaveLoadManager.registerDataProvider: Provider for key "${uniqueKey}" is invalid or missing required methods (getSaveData, loadSaveData).`,
+      )
+      return
+    }
+    if (this.providers.has(uniqueKey)) {
+      console.warn(
+        `SaveLoadManager.registerDataProvider: Provider for key "${uniqueKey}" already exists. Overwriting.`,
+      )
+    }
+    this.providers.set(uniqueKey, provider)
+    // console.log(`SaveLoadManager: Data provider "${uniqueKey}" registered.`);
+  }
+
+  /**
+   * Unregisters a data provider.
+   * @param {string} uniqueKey - The key of the provider to unregister.
+   */
+  unregisterDataProvider(uniqueKey) {
+    if (this.providers.delete(uniqueKey)) {
+      // console.log(`SaveLoadManager: Data provider "${uniqueKey}" unregistered.`);
+    } else {
+      // console.warn(`SaveLoadManager.unregisterDataProvider: Provider for key "${uniqueKey}" not found.`);
+    }
+  }
+
+  /** @private Builds the localStorage key for a given slotId. */
+  _buildSlotKey(slotId) {
+    return `${LOCAL_STORAGE_KEY_PREFIX}${slotId}`
+  }
+
+  /**
+   * Saves the current game state to a specified slot.
+   * @param {string|number} slotId - The identifier for the save slot.
+   * @param {object} [userMetadata={}] - Optional metadata to save (e.g., playerName, level, currentSceneName for display).
+   * @returns {Promise&lt;boolean>} True if saving was successful, false otherwise.
+   */
+  async saveGame(slotId, userMetadata = {}) {
+    // console.log(`SaveLoadManager: Attempting to save game to slot "${slotId}"...`);
+    if (slotId === null || slotId === undefined) {
+      console.error('SaveLoadManager.saveGame: slotId cannot be null or undefined.')
+      this.engine.events.emit('saveGameFailed', { slotId, error: 'Invalid slot ID' })
+      return false
+    }
+
+    const rootSaveObject = {
+      saveFileVersion: SAVE_FILE_VERSION,
+      timestamp: Date.now(),
+      metadata: userMetadata,
+      gameData: {},
+    }
+
+    try {
+      for (const [key, provider] of this.providers) {
+        // console.log(`SaveLoadManager: Getting data from provider "${key}"...`);
+        const dataPart = await Promise.resolve(provider.getSaveData())
+        rootSaveObject.gameData[key] = dataPart
+      }
+
+      const jsonString = JSON.stringify(rootSaveObject)
+      localStorage.setItem(this._buildSlotKey(slotId), jsonString)
+      // console.log(`SaveLoadManager: Game saved successfully to slot "${slotId}". Size: ${jsonString.length} chars`);
+      this.engine.events.emit('saveGameCompleted', { slotId, metadata: userMetadata })
+      return true
+    } catch (error) {
+      console.error(`SaveLoadManager.saveGame: Error saving to slot "${slotId}":`, error)
+      let errorMessage = 'Unknown error'
+      if (error instanceof DOMException &amp;&amp; error.name === 'QuotaExceededError') {
+        errorMessage = 'Storage quota exceeded. Could not save game.'
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      this.engine.events.emit('saveGameFailed', {
+        slotId,
+        error: errorMessage,
+        originalError: error,
+      })
+      return false
+    }
+  }
+
+  /**
+   * Loads game state from a specified slot.
+   * It calls `loadSaveData` on all registered providers. The game will then need to
+   * orchestrate scene transitions and state setup based on the loaded data,
+   * often in response to the 'loadGameCompleted' event or by using the returned data.
+   * @param {string|number} slotId - The identifier for the save slot.
+   * @returns {Promise&lt;object|null>} The full loaded save data object if successful, or null on failure.
+   */
+  async loadGame(slotId) {
+    // console.log(`SaveLoadManager: Attempting to load game from slot "${slotId}"...`);
+    if (slotId === null || slotId === undefined) {
+      console.error('SaveLoadManager.loadGame: slotId cannot be null or undefined.')
+      this.engine.events.emit('loadGameFailed', { slotId, error: 'Invalid slot ID' })
+      return null
+    }
+
+    const slotKey = this._buildSlotKey(slotId)
+    const jsonString = localStorage.getItem(slotKey)
+
+    if (!jsonString) {
+      console.warn(`SaveLoadManager.loadGame: No save data found for slot "${slotId}".`)
+      this.engine.events.emit('loadGameFailed', { slotId, error: 'No data in slot' })
+      return null
+    }
+
+    try {
+      const loadedRootObject = JSON.parse(jsonString)
+
+      if (loadedRootObject.saveFileVersion !== SAVE_FILE_VERSION) {
+        console.warn(
+          `SaveLoadManager.loadGame: Save file version mismatch for slot "${slotId}". Expected ${SAVE_FILE_VERSION}, got ${loadedRootObject.saveFileVersion}. Attempting to load anyway, but migrations may be needed.`,
+        )
+        // Future: Implement migration logic here based on version.
+      }
+
+      // TODO: Consider loading order/dependencies if necessary.
+      // For now, load in registration order.
+      for (const [key, provider] of this.providers) {
+        const dataPart = loadedRootObject.gameData ? loadedRootObject.gameData[key] : undefined
+        // console.log(`SaveLoadManager: Loading data for provider "${key}"...`);
+        await Promise.resolve(provider.loadSaveData(dataPart)) // Pass undefined if dataPart for key is missing
+      }
+
+      // console.log(`SaveLoadManager: Game loaded successfully from slot "${slotId}".`);
+      this.engine.events.emit('loadGameCompleted', { slotId, loadedData: loadedRootObject })
+      return loadedRootObject // Return the full data for the engine/UI to use for scene transitions etc.
+    } catch (error) {
+      console.error(`SaveLoadManager.loadGame: Error loading from slot "${slotId}":`, error)
+      this.engine.events.emit('loadGameFailed', {
+        slotId,
+        error: error.message,
+        originalError: error,
+      })
+      return null
+    }
+  }
+
+  /**
+   * Retrieves metadata for all available save slots.
+   * @returns {Promise&lt;Array&lt;{slotId: string|number, timestamp: number, metadata: object}>>}
+   */
+  async getSaveSlots() {
+    const slots = []
+    for (let i = 0; i &lt; localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key &amp;&amp; key.startsWith(LOCAL_STORAGE_KEY_PREFIX)) {
+        const slotId = key.substring(LOCAL_STORAGE_KEY_PREFIX.length)
+        try {
+          const jsonString = localStorage.getItem(key)
+          if (jsonString) {
+            const data = JSON.parse(jsonString)
+            // Ensure basic structure exists before adding
+            if (data &amp;&amp; typeof data.timestamp === 'number' &amp;&amp; typeof data.metadata === 'object') {
+              slots.push({
+                slotId: slotId, // Could be numeric if your slotIds are numbers
+                timestamp: data.timestamp,
+                metadata: data.metadata || {},
+              })
+            } else {
+              console.warn(
+                `SaveLoadManager.getSaveSlots: Invalid data structure in slot "${slotId}". Skipping.`,
+              )
+            }
+          }
+        } catch (error) {
+          console.warn(
+            `SaveLoadManager.getSaveSlots: Error parsing data for slot "${slotId}". It might be corrupted.`,
+            error,
+          )
+          // Optionally add it as a corrupted slot:
+          // slots.push({ slotId: slotId, timestamp: 0, metadata: { error: "Corrupted" } });
+        }
+      }
+    }
+    // Sort by timestamp, most recent first
+    slots.sort((a, b) => b.timestamp - a.timestamp)
+    return slots
+  }
+
+  /**
+   * Deletes a save slot.
+   * @param {string|number} slotId - The identifier for the save slot to delete.
+   * @returns {Promise&lt;void>}
+   */
+  async deleteSlot(slotId) {
+    if (slotId === null || slotId === undefined) {
+      console.error('SaveLoadManager.deleteSlot: slotId cannot be null or undefined.')
+      return
+    }
+    const slotKey = this._buildSlotKey(slotId)
+    localStorage.removeItem(slotKey)
+    // console.log(`SaveLoadManager: Deleted save slot "${slotId}".`);
+    this.engine.events.emit('saveSlotDeleted', { slotId })
+  }
+
+  /**
+   * Deletes all game save slots.
+   * @returns {Promise&lt;void>}
+   */
+  async deleteAllSlots() {
+    const keysToRemove = []
+    for (let i = 0; i &lt; localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key &amp;&amp; key.startsWith(LOCAL_STORAGE_KEY_PREFIX)) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key))
+    console.log(`SaveLoadManager: Deleted all ${keysToRemove.length} game save slots.`)
+    this.engine.events.emit('allSaveSlotsDeleted')
+  }
+}
+
+export default SaveLoadManager
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 20:34:29 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

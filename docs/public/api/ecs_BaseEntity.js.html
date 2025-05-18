@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: ecs/BaseEntity.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: ecs/BaseEntity.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/ecs/BaseEntity.js (New File)
+
+/**
+ * @file BaseEntity.js
+ * @description A base class for game entities that interact with the EntityManager.
+ */
+class BaseEntity {
+  /** @type {number} Unique ID for this entity within the EntityManager. */
+  id
+  /** @type {import('./EntityManager.js').default} Reference to the EntityManager. */
+  entityManager
+  /** @type {import('../core/IroncladEngine.js').default | null} Optional reference to the engine. */
+  engine
+
+  /**
+   * Creates a BaseEntity instance.
+   * @param {object} options
+   * @param {import('./EntityManager.js').default} options.entityManager - The EntityManager instance.
+   * @param {import('../core/IroncladEngine.js').default} [options.engine] - Optional engine instance for global access.
+   * @param {number} [options.id] - Optional existing entity ID to wrap. If not provided, a new one is created.
+   */
+  constructor(options = {}) {
+    if (!options.entityManager) {
+      throw new Error('BaseEntity: EntityManager instance is required in options.')
+    }
+    this.entityManager = options.entityManager
+    this.engine = options.engine || null
+
+    if (options.id !== undefined &amp;&amp; this.entityManager.isEntityAlive(options.id)) {
+      this.id = options.id
+      // console.log(`BaseEntity: Wrapping existing entity ID ${this.id}`);
+    } else {
+      this.id = this.entityManager.createEntity()
+      // console.log(`BaseEntity: Created new entity ID ${this.id}`);
+    }
+  }
+
+  /**
+   * Adds a component to this entity.
+   * @param {import('./EntityManager.js').ComponentTypeName} componentTypeName
+   * @param {import('./EntityManager.js').ComponentData} data
+   * @returns {import('./EntityManager.js').ComponentData | undefined}
+   */
+  addComponent(componentTypeName, data) {
+    return this.entityManager.addComponent(this.id, componentTypeName, data)
+  }
+
+  /**
+   * Retrieves a component from this entity.
+   * @param {import('./EntityManager.js').ComponentTypeName} componentTypeName
+   * @returns {import('./EntityManager.js').ComponentData | undefined}
+   */
+  getComponent(componentTypeName) {
+    return this.entityManager.getComponent(this.id, componentTypeName)
+  }
+
+  /**
+   * Checks if this entity has a specific component.
+   * @param {import('./EntityManager.js').ComponentTypeName} componentTypeName
+   * @returns {boolean}
+   */
+  hasComponent(componentTypeName) {
+    return this.entityManager.hasComponent(this.id, componentTypeName)
+  }
+
+  /**
+   * Removes a component from this entity.
+   * @param {import('./EntityManager.js').ComponentTypeName} componentTypeName
+   * @returns {boolean}
+   */
+  removeComponent(componentTypeName) {
+    return this.entityManager.removeComponent(this.id, componentTypeName)
+  }
+
+  /**
+   * Retrieves all components for this entity.
+   * @returns {Map&lt;import('./EntityManager.js').ComponentTypeName, import('./EntityManager.js').ComponentData> | undefined}
+   */
+  getAllComponents() {
+    return this.entityManager.getAllComponents(this.id)
+  }
+
+  /**
+   * Destroys this entity and all its components from the EntityManager.
+   */
+  destroy() {
+    if (this.entityManager.isEntityAlive(this.id)) {
+      this.entityManager.destroyEntity(this.id)
+    }
+    // Further cleanup of this instance's references could go here if needed
+    // e.g., this.entityManager = null; this.engine = null;
+  }
+
+  /**
+   * Emits an event through the engine's EventManager, if available.
+   * @param {string} eventName - The name of the event.
+   * @param {object} [eventData={}] - Additional data for the event.
+   */
+  emitEvent(eventName, eventData = {}) {
+    if (this.engine &amp;&amp; this.engine.events &amp;&amp; typeof this.engine.events.emit === 'function') {
+      this.engine.events.emit(eventName, { entityId: this.id, ...eventData })
+    } else {
+      // console.warn(`BaseEntity (ID: ${this.id}): Cannot emit event "${eventName}", engine or EventManager not available/functional.`);
+    }
+  }
+}
+
+export default BaseEntity
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 20:34:29 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

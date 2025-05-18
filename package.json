@@ -12,12 +12,14 @@
     "lint:oxlint": "oxlint . --fix -D correctness --ignore-path .gitignore",
     "lint:eslint": "eslint . --fix",
     "lint": "run-s lint:*",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "dependencies": {
     "ironclad-engine": "file:",
-    "pinia": "^3.0.1",
-    "vue": "^3.5.13"
+    "pinia": "^3.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
@@ -37,6 +39,8 @@
     "prettier": "3.5.3",
     "vite": "^6.2.4",
     "vite-plugin-vue-devtools": "^7.7.2",
-    "vitest": "^3.1.1"
+    "vitepress": "^1.6.3",
+    "vitest": "^3.1.1",
+    "vue": "^3.5.14"
   }
 }

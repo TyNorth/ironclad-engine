@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: core/EffectsManager.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: core/EffectsManager.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/core/EffectsManager.js
+
+/**
+ * @file EffectsManager.js
+ * @description Manages a list of active visual effects and applies them.
+ */
+
+// Import specific effect classes as they are created
+import FlashEffect from '../fx/FlashEffect.js'
+import ShakeEffect from '../fx/ShakeEffect.js' // Make sure path is correct
+import TintEffect from '../fx/TintEffect.js'
+// import FlashEffect from '../fx/FlashEffect.js'; // Example for future
+// import TintEffect from '../fx/TintEffect.js';   // Example for future
+
+class EffectsManager {
+  /**
+   * @param {import('./IroncladEngine.js').default} engine - The main engine instance.
+   */
+  constructor(engine) {
+    /** @private @type {import('./IroncladEngine.js').default} */
+    this.engine = engine
+
+    /**
+     * @private
+     * @type {import('../fx/BaseEffect.js').default[]}
+     * @description Array holding currently active effect instances.
+     */
+    this.activeEffects = []
+
+    /**
+     * @private
+     * @type {TintEffect | null}
+     * @description Holds the current persistent tint effect, if any.
+     */
+    this.persistentTintEffect = null // ADD THIS LINE
+
+    // console.log("EffectsManager: Constructed (Modular Effects).");
+  }
+
+  /**
+   * Adds a new effect instance to the manager.
+   * @param {import('../fx/BaseEffect.js').default} effectInstance - An instance of a class extending BaseEffect.
+   */
+  addEffect(effectInstance) {
+    if (
+      effectInstance &amp;&amp;
+      typeof effectInstance.update === 'function' &amp;&amp;
+      typeof effectInstance.apply === 'function'
+    ) {
+      if (typeof effectInstance.setEngine === 'function') {
+        effectInstance.setEngine(this.engine)
+      }
+      if (typeof effectInstance.start === 'function' &amp;&amp; effectInstance.isActive !== false) {
+        // Check isActive in case startsActive was false
+        effectInstance.start() // Ensure effect's internal timer is reset and it's active
+      }
+      this.activeEffects.push(effectInstance)
+      // console.log(`EffectsManager: Added effect - ${effectInstance.constructor.name}`);
+    } else {
+      console.error('EffectsManager: Attempted to add an invalid effect instance.', effectInstance)
+    }
+  }
+
+  /**
+   * Triggers a screen shake effect by creating and adding a ShakeEffect instance.
+   * @param {number} [intensity=10] - Maximum pixel offset for the shake.
+   * @param {number} [duration=500] - Duration of the shake in milliseconds.
+   * @param {boolean} [decay=true] - Whether the shake intensity should decay.
+   */
+  shake(intensity = 10, duration = 500, decay = true) {
+    const effectId = `Shake-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`
+
+    const shakeEffect = new ShakeEffect({
+      id: effectId,
+      engine: this.engine,
+      intensity: intensity,
+      duration: duration,
+      decay: decay,
+    })
+    this.addEffect(shakeEffect)
+    // console.log(`EffectsManager: Shake effect initiated.`);
+  }
+
+  /**
+   * Triggers a screen flash effect by creating and adding a FlashEffect instance.
+   * @param {string} [color='rgba(255, 255, 255, 0.5)'] - The color of the flash.
+   * @param {number} [duration=300] - Duration of the flash in milliseconds.
+   * @param {number} [maxOpacity=0.7] - The peak opacity of the flash (0 to 1).
+   * @param {boolean} [fadeOut=true] - Whether the flash should fade out.
+   */
+  flash(color = 'rgba(255, 255, 255, 0.5)', duration = 300, maxOpacity = 0.7, fadeOut = true) {
+    const effectId = `Flash-&lt;span class="math-inline">{Date.now()}-&lt;/span>{Math.random().toString(36).substr(2, 5)}`
+    const flashEffect = new FlashEffect({
+      id: effectId,
+      engine: this.engine,
+      color: color,
+      duration: duration,
+      maxOpacity: maxOpacity,
+      fadeOut: fadeOut,
+    })
+    this.addEffect(flashEffect)
+    // console.log(`[EffectsManager flash()] Flash effect initiated with ID: ${effectId}. Color: ${color}, Duration: ${duration}, Opacity: ${maxOpacity}`);
+  }
+
+  /**
+   * Applies or updates a persistent screen tint.
+   * If a tint is already active, its color and opacity are updated.
+   * If opacity is 0, the tint is effectively cleared.
+   * @param {string} [color='rgba(0,0,0,0)'] - The color of the tint.
+   * @param {number} [opacity=0] - The opacity of the tint (0 to 1).
+   */
+  tint(color = 'rgba(0,0,0,0)', opacity = 0) {
+    const clampedOpacity = Math.max(0, Math.min(opacity, 1))
+
+    if (clampedOpacity === 0 &amp;&amp; !this.persistentTintEffect) {
+      // No tint to apply and no existing tint, do nothing.
+      return
+    }
+
+    if (!this.persistentTintEffect) {
+      // Create a new persistent tint effect
+      const effectId = `PersistentTint-${Date.now()}`
+      this.persistentTintEffect = new TintEffect({
+        id: effectId,
+        engine: this.engine,
+        color: color,
+        opacity: clampedOpacity,
+        duration: Infinity, // Persistent
+        startsActive: clampedOpacity > 0, // Only start if opacity is > 0
+      })
+      this.addEffect(this.persistentTintEffect) // Add to active effects to be processed
+      // console.log(`[EffectsManager tint()] New persistent tint applied: ${color} @ ${clampedOpacity}`);
+    } else {
+      // Update existing persistent tint
+      this.persistentTintEffect.setColor(color)
+      this.persistentTintEffect.setOpacity(clampedOpacity)
+
+      if (clampedOpacity > 0 &amp;&amp; !this.persistentTintEffect.isActive) {
+        this.persistentTintEffect.start() // Re-activate if it was stopped but now has opacity
+        // Ensure it's in activeEffects if it was somehow removed but not nullified
+        if (!this.activeEffects.includes(this.persistentTintEffect)) {
+          this.addEffect(this.persistentTintEffect)
+        }
+      } else if (clampedOpacity === 0 &amp;&amp; this.persistentTintEffect.isActive) {
+        this.persistentTintEffect.stop() // Stop it if opacity is now 0
+      }
+      // console.log(`[EffectsManager tint()] Persistent tint updated: ${color} @ ${clampedOpacity}`);
+    }
+  }
+
+  /**
+   * Clears any persistent screen tint.
+   */
+  clearTint() {
+    if (this.persistentTintEffect) {
+      this.persistentTintEffect.stop() // This will set its currentOpacity to 0
+      // The effect will be removed from activeEffects by the update loop if it's marked finished.
+      // Or, we can explicitly remove it if we are sure it's the only way it's managed.
+      // For now, stop() is enough as its apply() will do nothing.
+      // To fully remove and allow a new one to be created cleanly:
+      // const index = this.activeEffects.indexOf(this.persistentTintEffect);
+      // if (index > -1) {
+      //     this.activeEffects.splice(index, 1);
+      // }
+      // this.persistentTintEffect = null;
+      // console.log("EffectsManager: Persistent screen tint cleared.");
+    }
+    // Alternatively, just set to transparent:
+    this.tint('rgba(0,0,0,0)', 0)
+  }
+
+  /**
+   * Updates all active effects and removes finished ones.
+   * @param {number} deltaTime - Time elapsed since the last frame, in seconds.
+   */
+  update(deltaTime) {
+    // --- LOG TO CONFIRM EffectsManager.update IS CALLED ---
+    console.log(
+      `%c[EffectsManager Update] Called. Active effects count: ${this.activeEffects.length}`,
+      'color: purple;',
+    )
+
+    if (this.activeEffects.length === 0) return
+
+    for (let i = this.activeEffects.length - 1; i >= 0; i--) {
+      const effect = this.activeEffects[i]
+
+      // --- LOG TO CONFIRM WE ARE PROCESSING AN EFFECT ---
+      console.log(
+        `[EffectsManager Update] Processing effect: ${effect.id || effect.constructor.name} (Active: ${effect.isActive}, Finished: ${effect.isFinished})`,
+      )
+
+      if (effect.isActive &amp;&amp; !effect.hasFinished()) {
+        // Double check conditions here
+        effect.update(deltaTime) // This should call ShakeEffect.update -> BaseEffect.update
+      }
+
+      if (effect.hasFinished()) {
+        this.activeEffects.splice(i, 1)
+        console.log(
+          `%c[EffectsManager Update] Removed finished effect: ${effect.id || effect.constructor.name}. Remaining: ${this.activeEffects.length}`,
+          'color: orange;',
+        )
+      }
+    }
+  }
+
+  /**
+   * Called after the main scene rendering (to an offscreen canvas).
+   * This method applies all active effects and draws the result to the visible main canvas.
+   * @param {CanvasRenderingContext2D} mainContext - The context of the visible main canvas.
+   * @param {HTMLCanvasElement} sceneCanvas - The offscreen canvas containing the rendered scene content.
+   */
+  postRender(mainContext, sceneCanvas) {
+    if (!mainContext || !sceneCanvas) {
+      console.error('EffectsManager.postRender: Missing mainContext or sceneCanvas.')
+      return
+    }
+
+    mainContext.save()
+    mainContext.clearRect(0, 0, mainContext.canvas.width, mainContext.canvas.height)
+
+    // Initial draw position for the scene canvas
+    let effectPipelineData = { drawX: 0, drawY: 0 }
+
+    // Apply effects that modify draw position (like shake)
+    this.activeEffects.forEach((effect) => {
+      if (effect.isActive &amp;&amp; !effect.hasFinished()) {
+        // Check if the effect's apply method is expected to return positional data
+        // For ShakeEffect, it does.
+        if (effect instanceof ShakeEffect) {
+          effectPipelineData = effect.apply(mainContext, sceneCanvas, effectPipelineData)
+        }
+      }
+    })
+
+    // Draw the sceneCanvas with accumulated positional effects
+    mainContext.drawImage(
+      sceneCanvas,
+      Math.round(effectPipelineData.drawX),
+      Math.round(effectPipelineData.drawY),
+    )
+
+    // Apply overlay effects (like flash, tint) after the scene is drawn
+    this.activeEffects.forEach((effect) => {
+      if (effect.isActive &amp;&amp; !effect.hasFinished()) {
+        // These effects draw directly onto the mainContext
+        // Example: if (effect instanceof FlashEffect || effect instanceof TintEffect)
+        if (!(effect instanceof ShakeEffect)) {
+          // Apply non-shake effects here
+          effect.apply(mainContext, sceneCanvas, effectPipelineData) // sceneCanvas might be needed for context by some effects
+        }
+      }
+    })
+
+    mainContext.restore()
+  }
+
+  /**
+   * Clears all active effects.
+   */
+  clearAllEffects() {
+    this.activeEffects.forEach((effect) => {
+      if (typeof effect.stop === 'function') {
+        effect.stop()
+      }
+    })
+    this.activeEffects = []
+    // console.log("EffectsManager: All active effects cleared.");
+  }
+
+  destroy() {
+    this.clearAllEffects()
+    // console.log("EffectsManager: Destroyed.");
+  }
+}
+
+export default EffectsManager
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 20:34:29 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

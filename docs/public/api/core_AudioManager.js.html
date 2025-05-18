@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: core/AudioManager.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: core/AudioManager.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/core/AudioManager.js
+
+/**
+ * @file AudioManager.js
+ * @description Manages loading, playback, and control of audio assets (sound effects and music).
+ */
+class AudioManager {
+  /**
+   * @param {import('./AssetLoader.js').default} assetLoader - Instance of the AssetLoader.
+   * @param {import('./EventManager.js').default} [eventManager=null] - Optional EventManager for audio events.
+   */
+  constructor(assetLoader, eventManager = null) {
+    if (!assetLoader) {
+      throw new Error('AudioManager: AssetLoader instance is required.')
+    }
+    /** @private @type {import('./AssetLoader.js').default} */
+    this.assetLoader = assetLoader
+    /** @private @type {import('./EventManager.js').default | null} */
+    this.eventManager = eventManager
+
+    /** @private @type {AudioContext | null} Reference from AssetLoader or created here. */
+    this.audioContext = this.assetLoader.audioContext || this._getAudioContext()
+
+    /** @private @type {GainNode | null} Master gain node for overall volume control. */
+    this.masterGainNode = null
+    /** @private @type {GainNode | null} Gain node for sound effects. */
+    this.sfxGainNode = null
+    /** @private @type {GainNode | null} Gain node for background music. */
+    this.musicGainNode = null
+
+    /** @private @type {AudioBufferSourceNode | null} Current background music source. */
+    this.currentMusicSource = null
+    /** @private @type {string | null} Name of the currently playing music track. */
+    this.currentMusicName = null
+    /** @private @type {boolean} Whether the current music is set to loop. */
+    this.isMusicLooping = false
+    /** @private @type {number} Volume for music (0-1). */
+    this.musicVolume = 0.7 // Default music volume
+    /** @private @type {number} Volume for sound effects (0-1). */
+    this.sfxVolume = 0.9 // Default SFX volume
+    /** @private @type {number} Master volume (0-1). */
+    this.masterVolume = 1.0
+
+    /** @private @type {boolean} Global mute state. */
+    this.isMuted = false
+
+    if (this.audioContext) {
+      this.masterGainNode = this.audioContext.createGain()
+      this.masterGainNode.connect(this.audioContext.destination)
+      this.masterGainNode.gain.setValueAtTime(this.masterVolume, this.audioContext.currentTime)
+
+      this.sfxGainNode = this.audioContext.createGain()
+      this.sfxGainNode.connect(this.masterGainNode)
+      this.sfxGainNode.gain.setValueAtTime(this.sfxVolume, this.audioContext.currentTime)
+
+      this.musicGainNode = this.audioContext.createGain()
+      this.musicGainNode.connect(this.masterGainNode)
+      this.musicGainNode.gain.setValueAtTime(this.musicVolume, this.audioContext.currentTime)
+      // console.log("AudioManager: Initialized with AudioContext and GainNodes.");
+    } else {
+      console.warn('AudioManager: AudioContext not available. Audio playback will be disabled.')
+    }
+  }
+
+  /**
+   * @private
+   * Gets or creates an AudioContext.
+   * @returns {AudioContext | null}
+   */
+  _getAudioContext() {
+    if (this.audioContext) return this.audioContext
+    try {
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)()
+      // console.log("AudioManager: AudioContext created internally.");
+      return this.audioContext
+    } catch (e) {
+      console.error('AudioManager: Web Audio API is not supported.', e)
+      return null
+    }
+  }
+
+  /**
+   * Plays a sound effect.
+   * @param {string} assetName - The name of the pre-loaded audio asset (AudioBuffer).
+   * @param {number} [volume=1.0] - Volume for this specific sound (0-1), relative to sfxVolume.
+   * @param {number} [playbackRate=1.0] - Speed of playback.
+   * @param {number} [startTime=0] - Offset in seconds to start playing from.
+   * @returns {AudioBufferSourceNode | null} The created source node, or null if sound cannot be played.
+   */
+  playSoundEffect(assetName, volume = 1.0, playbackRate = 1.0, startTime = 0) {
+    if (!this.audioContext || !this.sfxGainNode || this.isMuted) return null
+
+    const audioBuffer = this.assetLoader.get(assetName)
+    if (!(audioBuffer instanceof AudioBuffer)) {
+      console.warn(
+        `AudioManager.playSoundEffect: Audio asset "${assetName}" not found or not an AudioBuffer.`,
+      )
+      return null
+    }
+
+    const source = this.audioContext.createBufferSource()
+    source.buffer = audioBuffer
+    source.playbackRate.value = playbackRate
+
+    // Create a dedicated gain node for this specific sound effect instance for individual volume control
+    const individualSfxGain = this.audioContext.createGain()
+    individualSfxGain.gain.setValueAtTime(
+      Math.max(0, Math.min(volume, 1)),
+      this.audioContext.currentTime,
+    )
+
+    source.connect(individualSfxGain)
+    individualSfxGain.connect(this.sfxGainNode) // Connect to the main SFX gain node
+
+    source.start(0, startTime) // Play immediately, from startTime
+    // console.log(`AudioManager: Playing SFX "${assetName}"`);
+    return source
+  }
+
+  /**
+   * Plays background music. Stops any currently playing music.
+   * @param {string} assetName - The name of the pre-loaded audio asset (AudioBuffer).
+   * @param {boolean} [loop=true] - Whether the music should loop.
+   * @param {number} [volume=1.0] - Volume for this music track (0-1), relative to musicVolume.
+   * @param {number} [fadeInDuration=0] - Duration in seconds for a fade-in effect.
+   */
+  playMusic(assetName, loop = true, volume = 1.0, fadeInDuration = 0) {
+    if (!this.audioContext || !this.musicGainNode) return
+
+    this.stopMusic() // Stop any current music
+
+    const audioBuffer = this.assetLoader.get(assetName)
+    if (!(audioBuffer instanceof AudioBuffer)) {
+      console.warn(
+        `AudioManager.playMusic: Audio asset "${assetName}" not found or not an AudioBuffer.`,
+      )
+      return
+    }
+
+    this.currentMusicSource = this.audioContext.createBufferSource()
+    this.currentMusicSource.buffer = audioBuffer
+    this.currentMusicSource.loop = loop
+    this.isMusicLooping = loop
+    this.currentMusicName = assetName
+
+    // Individual gain for this track, allowing fade-ins and specific volume adjustments
+    const trackGainNode = this.audioContext.createGain()
+    trackGainNode.connect(this.musicGainNode)
+    this.currentMusicSource.connect(trackGainNode)
+
+    const targetVolume = Math.max(0, Math.min(volume, 1))
+
+    if (fadeInDuration > 0 &amp;&amp; !this.isMuted) {
+      trackGainNode.gain.setValueAtTime(0, this.audioContext.currentTime)
+      trackGainNode.gain.linearRampToValueAtTime(
+        targetVolume,
+        this.audioContext.currentTime + fadeInDuration,
+      )
+    } else if (!this.isMuted) {
+      trackGainNode.gain.setValueAtTime(targetVolume, this.audioContext.currentTime)
+    } else {
+      trackGainNode.gain.setValueAtTime(0, this.audioContext.currentTime) // Start muted if globally muted
+    }
+
+    this.currentMusicSource.start(0)
+    // console.log(`AudioManager: Playing music "${assetName}". Loop: ${loop}, Volume: ${targetVolume}`);
+    if (this.eventManager)
+      this.eventManager.emit('audio:musicStarted', { name: assetName, loop: loop })
+  }
+
+  /**
+   * Stops the currently playing background music.
+   * @param {number} [fadeOutDuration=0] - Duration in seconds for a fade-out effect.
+   */
+  stopMusic(fadeOutDuration = 0) {
+    if (this.currentMusicSource &amp;&amp; this.audioContext &amp;&amp; this.musicGainNode) {
+      const sourceToStop = this.currentMusicSource
+      const nameOfMusicStopped = this.currentMusicName
+      // console.log(`AudioManager: Stopping music "${nameOfMusicStopped}". Fade: ${fadeOutDuration}s`);
+
+      if (fadeOutDuration > 0 &amp;&amp; sourceToStop.context.state === 'running') {
+        // Assuming the music source is connected to a gain node which is then connected to musicGainNode
+        // We need to find that specific gain node to fade it out.
+        // For simplicity, if we fade, we fade the main musicGainNode, then restore it.
+        // A better approach: each playing music track has its own gain node.
+        // Our current playMusic creates a trackGainNode, but we don't store it on this.
+        // For now, simple stop or fade main musicGainNode then reset.
+
+        const currentMusicVolume = this.musicGainNode.gain.value
+        this.musicGainNode.gain.setValueAtTime(currentMusicVolume, this.audioContext.currentTime)
+        this.musicGainNode.gain.linearRampToValueAtTime(
+          0,
+          this.audioContext.currentTime + fadeOutDuration,
+        )
+
+        sourceToStop.stop(this.audioContext.currentTime + fadeOutDuration)
+        // Restore musicGainNode volume after fade for next track
+        setTimeout(
+          () => {
+            if (this.musicGainNode &amp;&amp; !this.isMuted) {
+              this.musicGainNode.gain.setValueAtTime(
+                this.musicVolume,
+                this.audioContext.currentTime,
+              )
+            }
+          },
+          fadeOutDuration * 1000 + 50,
+        )
+      } else {
+        sourceToStop.stop(0)
+      }
+
+      this.currentMusicSource.onended = () => {
+        if (this.eventManager &amp;&amp; nameOfMusicStopped === this.currentMusicName) {
+          // Ensure it's the same track that ended
+          this.eventManager.emit('audio:musicEnded', { name: nameOfMusicStopped })
+        }
+      }
+
+      this.currentMusicSource = null
+      this.currentMusicName = null
+    }
+  }
+
+  /**
+   * Pauses the AudioContext (suspends all audio).
+   */
+  pauseAll() {
+    if (this.audioContext &amp;&amp; this.audioContext.state === 'running') {
+      this.audioContext.suspend().then(() => {
+        /* console.log("AudioManager: AudioContext suspended."); */
+      })
+    }
+  }
+
+  /**
+   * Resumes the AudioContext (resumes all audio).
+   * Needs user interaction to start/resume AudioContext if it was suspended by browser policy.
+   */
+  resumeAll() {
+    if (this.audioContext &amp;&amp; this.audioContext.state === 'suspended') {
+      this.audioContext.resume().then(() => {
+        /* console.log("AudioManager: AudioContext resumed."); */
+      })
+    } else if (!this.audioContext) {
+      // Attempt to create it if it wasn't created (e.g. due to no user interaction yet)
+      this._getAudioContext()
+    }
+  }
+
+  // --- Volume Controls ---
+  _updateGains() {
+    if (!this.audioContext) return
+    const masterVol = this.isMuted ? 0 : this.masterVolume
+    if (this.masterGainNode) {
+      this.masterGainNode.gain.linearRampToValueAtTime(
+        masterVol,
+        this.audioContext.currentTime + 0.05,
+      )
+    }
+    if (this.sfxGainNode) {
+      this.sfxGainNode.gain.linearRampToValueAtTime(
+        this.sfxVolume,
+        this.audioContext.currentTime + 0.05,
+      )
+    }
+    if (this.musicGainNode) {
+      this.musicGainNode.gain.linearRampToValueAtTime(
+        this.musicVolume,
+        this.audioContext.currentTime + 0.05,
+      )
+    }
+  }
+
+  setMasterVolume(volume) {
+    this.masterVolume = Math.max(0, Math.min(volume, 1))
+    this._updateGains()
+    // console.log(`AudioManager: Master volume set to ${this.masterVolume}`);
+  }
+  setSfxVolume(volume) {
+    this.sfxVolume = Math.max(0, Math.min(volume, 1))
+    this._updateGains()
+    // console.log(`AudioManager: SFX volume set to ${this.sfxVolume}`);
+  }
+  setMusicVolume(volume) {
+    this.musicVolume = Math.max(0, Math.min(volume, 1))
+    this._updateGains()
+    // console.log(`AudioManager: Music volume set to ${this.musicVolume}`);
+  }
+
+  getSfxVolume() {
+    return this.sfxVolume
+  }
+  getMusicVolume() {
+    return this.musicVolume
+  }
+  getMasterVolume() {
+    return this.masterVolume
+  }
+
+  setMuted(muted) {
+    this.isMuted = !!muted
+    this._updateGains()
+    // console.log(`AudioManager: Mute state set to ${this.isMuted}`);
+    if (this.eventManager) this.eventManager.emit('audio:muteChanged', { muted: this.isMuted })
+  }
+  toggleMute() {
+    this.setMuted(!this.isMuted)
+  }
+  getMuted() {
+    return this.isMuted
+  }
+
+  /**
+   * Call this when the engine is shutting down.
+   */
+  destroy() {
+    this.stopMusic()
+    if (this.masterGainNode) this.masterGainNode.disconnect()
+    if (this.sfxGainNode) this.sfxGainNode.disconnect()
+    if (this.musicGainNode) this.musicGainNode.disconnect()
+    // AudioContext is managed by AssetLoader's destroy method or shared.
+    // If AudioManager created it internally, it should close it.
+    // For now, assume AssetLoader handles its AudioContext.
+    // console.log("AudioManager: Destroyed.");
+  }
+}
+
+export default AudioManager
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 20:34:29 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

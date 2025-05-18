@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: core/GameLoop.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: core/GameLoop.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/core/GameLoop.js
+
+/**
+ * @file GameLoop.js
+ * @description Defines the core game loop using requestAnimationFrame.
+ * Manages update and render cycles and calculates delta time.
+ */
+
+/**
+ * @class GameLoop
+ * @description Manages the main game loop, calling update and render functions
+ * at a consistent rate.
+ */
+class GameLoop {
+  /**
+   * Creates an instance of GameLoop.
+   * @param {function(number): void} update - The function to call for game logic updates.
+   * It receives deltaTime in seconds.
+   * @param {function(): void} render - The function to call for rendering the game.
+   */
+  constructor(update, render) {
+    /** @private {boolean} Indicates if the game loop is currently running. */
+    this.isRunning = false
+    /** @private {number} The timestamp of the last frame. Used to calculate deltaTime. */
+    this.lastTime = 0
+    /** @private {number} The accumulated time for fixed updates, if we were to implement them. Not used in basic loop. */
+    // this.accumulator = 0;
+    /** @private {number} The ID returned by requestAnimationFrame. Used to cancel the loop. */
+    this.rafId = null
+
+    /** @private {function(number): void} The game's main update function. */
+    this.update =
+      update ||
+      ((deltaTime) => {
+        console.warn('GameLoop: Update function not provided.', deltaTime)
+      })
+    /** @private {function(): void} The game's main render function. */
+    this.render =
+      render ||
+      (() => {
+        console.warn('GameLoop: Render function not provided.')
+      })
+
+    // Bind the loop method to this instance to maintain context in requestAnimationFrame
+    this.loop = this.loop.bind(this)
+  }
+
+  /**
+   * The main loop method that gets called by requestAnimationFrame.
+   * @param {number} currentTime - The current time in milliseconds, provided by requestAnimationFrame.
+   * @private
+   */
+  loop(currentTime) {
+    if (!this.isRunning) {
+      return
+    }
+
+    // Convert time to seconds
+    const currentInSeconds = currentTime * 0.001
+    const deltaTime = currentInSeconds - this.lastTime * 0.001
+    this.lastTime = currentTime
+
+    // Call the provided update function with deltaTime
+    this.update(deltaTime)
+
+    // Call the provided render function
+    this.render()
+
+    // Request the next frame
+    this.rafId = requestAnimationFrame(this.loop)
+  }
+
+  /**
+   * Starts the game loop.
+   * Logs a warning if the loop is already running.
+   */
+  start() {
+    if (this.isRunning) {
+      console.warn('GameLoop is already running.')
+      return
+    }
+    this.isRunning = true
+    this.lastTime = performance.now() // Initialize lastTime before the first loop call
+    console.log('GameLoop started.')
+    this.rafId = requestAnimationFrame(this.loop)
+  }
+
+  /**
+   * Stops the game loop.
+   */
+  stop() {
+    if (!this.isRunning) {
+      console.warn('GameLoop is not running.')
+      return
+    }
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId)
+    }
+    this.isRunning = false
+    this.rafId = null
+    console.log('GameLoop stopped.')
+  }
+
+  /**
+   * Sets a new update function for the game loop.
+   * @param {function(number): void} newUpdateFunction - The new function to call for game logic updates.
+   */
+  setUpdate(newUpdateFunction) {
+    if (typeof newUpdateFunction === 'function') {
+      this.update = newUpdateFunction
+    } else {
+      console.error('Failed to set update function: provided argument is not a function.')
+    }
+  }
+
+  /**
+   * Sets a new render function for the game loop.
+   * @param {function(): void} newRenderFunction - The new function to call for rendering the game.
+   */
+  setRender(newRenderFunction) {
+    if (typeof newRenderFunction === 'function') {
+      this.render = newRenderFunction
+    } else {
+      console.error('Failed to set render function: provided argument is not a function.')
+    }
+  }
+}
+
+export default GameLoop
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 20:34:29 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
