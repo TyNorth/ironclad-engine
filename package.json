@@ -1,8 +1,22 @@
 {
   "name": "ironclad-engine",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "A modular 2D/2.5D JavaScript game engine built with HTML5 Canvas and Vite.",
   "type": "module",
+  "main": "./dist/ironclad-engine.umd.cjs",
+  "module": "./dist/ironclad-engine.js",
+  "exports": {
+    ".": {
+      "import": "./dist/ironclad-engine.js",
+      "require": "./dist/ironclad-engine.umd.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "src/engine",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -15,7 +29,8 @@
     "format": "prettier --write src/",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "build:engine": "vite build --config vite.engine.config.js"
   },
   "dependencies": {
     "ironclad-engine": "file:",
@@ -42,5 +57,26 @@
     "vitepress": "^1.6.3",
     "vitest": "^3.1.1",
     "vue": "^3.5.14"
-  }
+  },
+  "keywords": [
+    "game-engine",
+    "javascript",
+    "html5-canvas",
+    "ecs",
+    "2d-game-engine",
+    "gamedev",
+    "vite",
+    "game-development",
+    "rpg-engine"
+  ],
+  "author": "Your Name <your.email@example.com> (https://your-website.com)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TyNorth/ironclad-engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TyNorth/ironclad-engine/issues"
+  },
+  "homepage": "https://TyNorth.github.io/ironclad-engine/"
 }

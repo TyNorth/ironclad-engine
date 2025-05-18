@@ -6,12 +6,12 @@ export default {
   title: 'Ironclad Engine',
   description: 'Documentation for the Ironclad Engine.',
   base: '/ironclad-engine-docs/', // IMPORTANT: Change if deploying to <username>.github.io/ironclad-engine-docs/ or similar subpath
-
+  ignoreDeadLinks: true,
   themeConfig: {
     logo: '/logo.svg', // Optional: Place your logo in docs/public/logo.svg
 
     nav: [
-      { text: 'Home', link: '/' },
+      { text: 'Home', link: '/ironclad-engine-docs' },
       { text: 'Guide', link: '/guide/getting-started' }, // Link to your first guide page
       { text: 'API Reference', link: '/public/api/home' }, // Link to where JSDoc output will be (e.g., docs/public/api/index.html)
       { text: 'GitHub', link: 'https://github.com/TyNorth/ironclad-engine' }, // Replace with your repo link
