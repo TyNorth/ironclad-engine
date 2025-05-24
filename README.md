@@ -164,6 +164,6 @@ This is primarily a solo development project for now. Future contributions might
 
 ## 📜 License
 
-This project is licensed under the MIT License. (You should add a `LICENSE` file with the MIT license text to your repository).
+This project is licensed under the MIT License. 
 
 
