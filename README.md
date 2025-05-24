@@ -1,4 +1,4 @@
-````markdown
+
 # Ironclad Engine 🛡️
 
 **Ironclad Engine** is a modular, data-driven 2D/2.5D game engine being developed in JavaScript, utilizing HTML5 Canvas for rendering and Vite for the development environment. It's designed to be flexible and extensible, with its initial feature set driven by the development of the testbed RPG, _Tartu Legends_ (envisioned with Octopath Traveler-style overworld and Paper Mario-style jump mechanics).
@@ -21,7 +21,7 @@ You can install it in your project using npm or yarn:
 ```bash
 npm install ironclad-engine
 ```
-````
+
 
 or
 
