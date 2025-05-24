@@ -59,10 +59,10 @@ This section contains guides explaining core concepts, how to use engine systems
     - [ScrollablePanel (`ScrollablePanel.js`)](`/guide/ui-scrollable-panel.md`)
     - [TextInputField (`TextInputField.js`)](`/guide/ui-text-input.md`)
 
-## Ⅲ. API Reference (`/public/api/`)
+## Ⅲ. API Reference (`/api/`)
 
 This section provides direct links to the JSDoc-generated HTML documentation for each class and module.
 
 - [API Reference Landing Page](`docs/api/index.md`)
 - **Direct link to the full JSDoc HTML output:**
-- [Open Full JSDoc API Reference](/public/api/)
+- [Open Full JSDoc API Reference](/api/)

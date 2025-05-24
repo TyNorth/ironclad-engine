@@ -1,6 +1,6 @@
 {
   "name": "ironclad-engine",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "A modular 2D/2.5D JavaScript game engine built with HTML5 Canvas and Vite.",
   "type": "module",
   "main": "./dist/ironclad-engine.umd.cjs",
@@ -39,7 +39,7 @@
   "devDependencies": {
     "@eslint/js": "^9.22.0",
     "@playwright/test": "^1.51.1",
-    "@vitejs/plugin-vue": "^5.2.3",
+    "@vitejs/plugin-vue": "^5.2.4",
     "@vitest/eslint-plugin": "^1.1.39",
     "@vue/eslint-config-prettier": "^10.2.0",
     "@vue/test-utils": "^2.4.6",
@@ -55,8 +55,7 @@
     "vite": "^6.2.4",
     "vite-plugin-vue-devtools": "^7.7.2",
     "vitepress": "^1.6.3",
-    "vitest": "^3.1.1",
-    "vue": "^3.5.14"
+    "vitest": "^3.1.1"
   },
   "keywords": [
     "game-engine",

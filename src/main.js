@@ -26,6 +26,11 @@ import MovementSystem from './game/systems/MovementSystem.js'
 import RenderSystem from './engine/ecs/systems/RenderSystem.js'
 import AnimationSystem from './engine/ecs/systems/AnimationSystem.js'
 
+// Import Physics System
+// In main.js
+import PhysicsSystem from './engine/physics/PhysicsSystem.js' // Adjust path
+// ...
+// Example priority, run before collision
 import { createPinia } from 'pinia'
 
 const vueApp = createApp(App)
@@ -83,27 +88,29 @@ Promise.resolve()
         const GP_LSTICK_Y = InputManager.GP_AXIS_LEFT_STICK_Y // Typically Axis 1
         const GP_LSTICK_X = InputManager.GP_AXIS_LEFT_STICK_X // Typically Axis 0
 
-        // --- NSW CONTROLLER'S D-PAD ---
-        const NSW_DPAD_UP_AXIS = 9 // Confirmed from logs for D-Pad UP
+        // Standard D-Pad Buttons
+        const GP_DPAD_UP = InputManager.GP_BUTTON_DPAD_UP // Standard Button 12
+        const GP_DPAD_DOWN = InputManager.GP_BUTTON_DPAD_DOWN // Standard Button 13
+        const GP_DPAD_LEFT = InputManager.GP_BUTTON_DPAD_LEFT // Standard Button 14
+        const GP_DPAD_RIGHT = InputManager.GP_BUTTON_DPAD_RIGHT // Standard Button 15
 
-        // Standard D-Pad Buttons (Use these for Down, Left, Right first. Verify with raw logs.)
-        const GP_DPAD_DOWN_BTN = InputManager.GP_BUTTON_DPAD_DOWN // Standard Button 13
-        const GP_DPAD_LEFT_BTN = InputManager.GP_BUTTON_DPAD_LEFT // Standard Button 14
-        const GP_DPAD_RIGHT_BTN = InputManager.GP_BUTTON_DPAD_RIGHT // Standard Button 15
+        console.log(
+          'main.js: Defining input actions using standard D-Pad buttons and analog sticks...',
+        )
 
-        console.log('main.js: Defining input actions with revised D-Pad and analog sticks...')
+        inputManagerInstance.defineAction('jump', [
+          { type: 'key', code: 'Space' },
+          { type: 'key', code: 'KeyX' }, // Common alternative jump key
+          { type: 'gamepadButton', buttonIndex: InputManager.GP_BUTTON_A, padIndex: 0 }, // Standard A button
+          // Note: D-Pad Up is now part of 'moveUp', not 'jump', for Octopath-style movement.
+          // If you want D-Pad Up to ALSO jump, add its binding here too.
+        ])
 
         inputManagerInstance.defineAction('moveUp', [
           { type: 'key', code: 'KeyW' },
           { type: 'key', code: 'ArrowUp' },
-          // D-pad Up (using your controller's specific Axis 9, value -1)
-          {
-            type: 'gamepadAxis',
-            axisIndex: NSW_DPAD_UP_AXIS,
-            direction: -1,
-            threshold: 0.9,
-            padIndex: 0,
-          }, // High threshold for precise -1.0
+          // D-pad Up (using standard button mapping)
+          { type: 'gamepadButton', buttonIndex: GP_DPAD_UP, padIndex: 0 },
           // Left Analog Stick Up
           {
             type: 'gamepadAxis',
@@ -111,17 +118,14 @@ Promise.resolve()
             direction: -1,
             threshold: 0.4,
             padIndex: 0,
-          }, // Increased threshold for stick
+          },
         ])
 
         inputManagerInstance.defineAction('moveDown', [
           { type: 'key', code: 'KeyS' },
           { type: 'key', code: 'ArrowDown' },
-          // D-pad Down - TRYING STANDARD BUTTON FIRST.
-          // **VERIFY WITH RAW LOGS:** Press D-Pad Down, see which `Button X state changed. Pressed: true` appears.
-          // If it's not button 13, update GP_DPAD_DOWN_BTN or use the correct index.
-          // If D-Pad Down ONLY reports on Axis 9 (e.g., value 3.2857), this binding won't work for D-Pad Down.
-          { type: 'gamepadButton', buttonIndex: GP_DPAD_DOWN_BTN, padIndex: 0 },
+          // D-pad Down (using standard button mapping)
+          { type: 'gamepadButton', buttonIndex: GP_DPAD_DOWN, padIndex: 0 },
           // Left Analog Stick Down
           {
             type: 'gamepadAxis',
@@ -129,16 +133,14 @@ Promise.resolve()
             direction: 1,
             threshold: 0.4,
             padIndex: 0,
-          }, // Increased threshold for stick
+          },
         ])
 
         inputManagerInstance.defineAction('moveLeft', [
           { type: 'key', code: 'KeyA' },
           { type: 'key', code: 'ArrowLeft' },
-          // D-pad Left - TRYING STANDARD BUTTON FIRST.
-          // **VERIFY WITH RAW LOGS:** Press D-Pad Left, see which button index is triggered.
-          // If it's Axis 9 with value 0.7143, this binding won't work.
-          { type: 'gamepadButton', buttonIndex: GP_DPAD_LEFT_BTN, padIndex: 0 },
+          // D-pad Left (using standard button mapping)
+          { type: 'gamepadButton', buttonIndex: GP_DPAD_LEFT, padIndex: 0 },
           // Left Analog Stick Left
           {
             type: 'gamepadAxis',
@@ -146,23 +148,14 @@ Promise.resolve()
             direction: -1,
             threshold: 0.4,
             padIndex: 0,
-          }, // Increased threshold
+          },
         ])
 
         inputManagerInstance.defineAction('moveRight', [
           { type: 'key', code: 'KeyD' },
           { type: 'key', code: 'ArrowRight' },
-          // D-pad Right - TRYING STANDARD BUTTON FIRST.
-          // **VERIFY WITH RAW LOGS:** Press D-Pad Right, see which button index is triggered.
-          // If it's Axis 9 with value -0.4286, this binding won't work.
-          { type: 'gamepadButton', buttonIndex: GP_DPAD_RIGHT_BTN, padIndex: 0 },
-          {
-            type: 'gamepadAxis',
-            axisIndex: NSW_DPAD_UP_AXIS,
-            direction: -1,
-            threshold: 0.9,
-            padIndex: 0,
-          },
+          // D-pad Right (using standard button mapping)
+          { type: 'gamepadButton', buttonIndex: GP_DPAD_RIGHT, padIndex: 0 },
           // Left Analog Stick Right
           {
             type: 'gamepadAxis',
@@ -170,7 +163,7 @@ Promise.resolve()
             direction: 1,
             threshold: 0.4,
             padIndex: 0,
-          }, // Increased threshold
+          },
         ])
 
         // Other actions (using standard button mappings)
@@ -196,12 +189,7 @@ Promise.resolve()
           { type: 'gamepadButton', buttonIndex: InputManager.GP_BUTTON_Y, padIndex: 0 },
         ])
         inputManagerInstance.defineAction('toggleDebug', [{ type: 'key', code: 'KeyC' }])
-        inputManagerInstance.defineAction('testShake', [
-          { type: 'key', code: 'KeyK' }, // 'K' key will trigger the shake
-        ])
-        inputManagerInstance.defineAction('testFlash', [
-          { type: 'key', code: 'KeyF' }, // 'K' key will trigger the shake
-        ])
+
         console.log('main.js: Input actions defined.')
       } else {
         console.error('main.js: Engine or InputManager not available for defining actions.')
@@ -214,6 +202,7 @@ Promise.resolve()
         engine.registerSystem(new MovementSystem(), 10)
         engine.registerSystem(new AnimationSystem(), 50)
         engine.registerSystem(new RenderSystem(), 100)
+        engine.registerSystem(new PhysicsSystem(), 20)
       } else {
         console.error(
           'main.js: Could not register systems, engine or registerSystem not available.',

@@ -2,32 +2,47 @@
 
 /**
  * @file BaseScene.js
- * @description A base class for all game scenes, providing common lifecycle methods and properties.
+ * @description A base class for all game scenes, providing common lifecycle methods,
+ * properties, and UI element management helpers.
  */
 
+/**
+ * @class BaseScene
+ * @abstract
+ * @description An abstract base class that game scenes can extend.
+ * It provides a common structure for initialization, updates, rendering,
+ * and managing a list of UI elements.
+ */
 class BaseScene {
   constructor() {
-    /** @type {import('./IroncladEngine.js').default | null} Reference to the game engine. Set by SceneManager. */
+    /** * Reference to the game engine instance.
+     * This is typically set by the SceneManager when the scene is initialized.
+     * @type {import('./IroncladEngine.js').default | null}
+     */
     this.engine = null
 
-    /** @type {object | null} UI context data passed to this scene or managed by it. */
+    /** * UI context data passed to this scene or managed by it.
+     * Can be used for sharing state with UI elements or other scenes.
+     * @type {object | null}
+     */
     this.uiContext = null
 
-    /** @type {import('../ui/BaseUIElement.js').default[]} Array to hold UI elements managed by this scene. */
+    /** * Array to hold UI elements managed by this scene.
+     * Use `addUIElement()` to add elements to this list.
+     * @type {import('../ui/BaseUIElement.js').default[]}
+     */
     this.uiElements = []
 
     /**
-     * @type {boolean}
-     * @description If true, this scene blocks updates to scenes below it in the SceneManager stack.
+     * If true, this scene blocks updates to scenes below it in the SceneManager stack.
      * If false (e.g., for a HUD), scenes below it will also update.
+     * @type {boolean}
      */
     this.isModal = true
 
     /**
+     * Tracks if the scene has been successfully initialized.
      * @type {boolean}
-     * @description Tracks if the scene has been initialized. Prevents re-initialization if not desired.
-     * Note: The current SceneManager (class-based) creates new instances, so initialize is called once per instance.
-     * This flag is more useful if scenes were re-used.
      */
     this.isInitialized = false
 
@@ -35,55 +50,52 @@ class BaseScene {
   }
 
   /**
-   * Called by the SceneManager when the scene is first created and activated (pushed or switched to).
-   * Ideal for one-time setup, loading scene-specific assets (if not preloaded), and initializing UI.
+   * Called by the SceneManager when the scene is first activated (pushed or switched to).
+   * Override this for one-time setup, loading scene-specific assets, and initializing UI.
    * @param {import('./IroncladEngine.js').default} engine - The engine instance.
-   * @param {object} [data={}] - Optional data passed when the scene is activated.
+   * @param {object} [data={}] - Optional data passed when the scene is activated (e.g., from `pushScene` or `switchTo`).
    * @returns {Promise<void> | void}
    */
   async initialize(engine, data = {}) {
     this.engine = engine
+    // If data contains uiContext, assign it
+    if (data && data.uiContext !== undefined) {
+      this.uiContext = data.uiContext
+    }
     this.isInitialized = true
     // console.log(`${this.constructor.name}: Initialized with data:`, data);
   }
 
   /**
-   * Called every frame by the SceneManager if this scene is active (or non-modal and further down the stack).
-   * Contains the main game logic for the scene, input handling, and UI element updates.
+   * Called every frame by the SceneManager if this scene is active.
+   * Override for scene-specific game logic, input handling.
+   * This base implementation updates managed UI elements.
    * @param {number} deltaTime - The time elapsed since the last frame, in seconds.
    * @param {import('./IroncladEngine.js').default} engine - The engine instance.
    * @returns {Promise<void> | void}
    */
   async update(deltaTime, engine) {
-    // Example: Update UI elements if the scene manages them directly
-    // const mousePos = engine.inputManager.getCanvasMousePosition();
-    // for (const element of this.uiElements) {
-    //     if (element.visible && element.enabled) {
-    //         element.update(deltaTime, engine, mousePos);
-    //     }
-    // }
+    if (this.uiElements && this.uiElements.length > 0 && this.isInitialized) {
+      this.updateUIElements(deltaTime, engine)
+    }
   }
 
   /**
-   * Called every frame by the SceneManager for each scene in the stack (bottom to top) that is visible.
-   * Handles all drawing operations for this scene.
+   * Called every frame by the SceneManager for visible scenes.
+   * Override for scene-specific drawing operations (background, game world elements).
+   * This base implementation renders managed UI elements.
    * @param {CanvasRenderingContext2D} context - The rendering context.
    * @param {import('./IroncladEngine.js').default} engine - The engine instance.
    * @returns {Promise<void> | void}
    */
   async render(context, engine) {
-    // Example: Render UI elements if the scene manages them directly
-    // for (const element of this.uiElements) {
-    //     if (element.visible) {
-    //         element.render(context, engine);
-    //     }
-    // }
+    if (this.uiElements && this.uiElements.length > 0 && this.isInitialized) {
+      this.renderUIElements(context, engine)
+    }
   }
 
   /**
-   * Called by the SceneManager when another scene is pushed on top of this one,
-   * making this scene no longer the active (top) updating scene (if this scene is modal).
-   * Good for pausing animations, saving temporary state, or stopping sounds specific to this scene.
+   * Called by SceneManager when another modal scene is pushed on top of this one.
    * @param {import('./IroncladEngine.js').default} engine - The engine instance.
    * @returns {Promise<void> | void}
    */
@@ -92,9 +104,7 @@ class BaseScene {
   }
 
   /**
-   * Called by the SceneManager when this scene becomes the active (top) updating scene again
-   * after a scene above it was popped.
-   * Good for restoring state, resuming animations, or restarting sounds.
+   * Called by SceneManager when this scene becomes active again after a scene above it was popped.
    * @param {import('./IroncladEngine.js').default} engine - The engine instance.
    * @param {any} [data=null] - Optional data passed from the popped scene.
    * @returns {Promise<void> | void}
@@ -104,41 +114,50 @@ class BaseScene {
   }
 
   /**
-   * Called by the SceneManager when the scene is about to be permanently removed
-   * from the stack (either by `popScene` or `switchTo`).
-   * Ideal for final cleanup of resources specific to this instance of the scene.
+   * Called by SceneManager when the scene is about to be permanently removed.
+   * Override for final cleanup. Base implementation clears UI elements.
    * @param {import('./IroncladEngine.js').default} engine - The engine instance.
    * @returns {Promise<void> | void}
    */
   async unload(engine) {
-    // console.log(`${this.constructor.name}: Unloaded.`);
-    this.uiElements = [] // Clear UI elements as a common cleanup
+    // console.log(`${this.constructor.name}: Unloading.`);
+    this.uiElements.forEach((element) => {
+      if (typeof element.destroy === 'function') {
+        element.destroy()
+      }
+    })
+    this.uiElements = []
     this.isInitialized = false
-    this.engine = null // Good practice to nullify
+    this.engine = null // Nullify engine reference
     this.uiContext = null
   }
 
-  // --- Common UI Helper Methods (Optional - scenes can manage uiElements directly or use these) ---
-
   /**
-   * Adds a UI element to the scene's managed list and sets its engine reference.
-   * @param {import('../ui/BaseUIElement.js').default} element
+   * Adds a UI element to this scene's managed list and sets its engine reference.
+   * @param {import('../ui/BaseUIElement.js').default} element - The UI element to add.
    */
   addUIElement(element) {
-    if (element && typeof element.setEngine === 'function') {
-      element.setEngine(this.engine)
+    if (element) {
+      if (typeof element.setEngine === 'function' && this.engine) {
+        element.setEngine(this.engine)
+      }
+      this.uiElements.push(element)
+    } else {
+      console.warn(`${this.constructor.name}: Attempted to add a null or undefined UI element.`)
     }
-    this.uiElements.push(element)
   }
 
   /**
    * Updates all enabled and visible UI elements managed by this scene.
-   * Call this from the scene's `update` method if using these helpers.
-   * @param {number} deltaTime
-   * @param {import('./IroncladEngine.js').default} engine
+   * Typically called by the scene's `update` method or `BaseScene.update`.
+   * @param {number} deltaTime - The time elapsed since the last frame, in seconds.
+   * @param {import('./IroncladEngine.js').default} engine - The engine instance.
    */
   updateUIElements(deltaTime, engine) {
-    if (!engine || !engine.inputManager) return
+    if (!engine || !engine.inputManager) {
+      // console.warn(`${this.constructor.name}: updateUIElements called without engine or inputManager.`);
+      return
+    }
     const mousePos = engine.inputManager.getCanvasMousePosition()
     for (const element of this.uiElements) {
       if (element.visible && element.enabled) {
@@ -149,9 +168,9 @@ class BaseScene {
 
   /**
    * Renders all visible UI elements managed by this scene.
-   * Call this from the scene's `render` method if using these helpers.
-   * @param {CanvasRenderingContext2D} context
-   * @param {import('./IroncladEngine.js').default} engine
+   * Typically called by the scene's `render` method or `BaseScene.render`.
+   * @param {CanvasRenderingContext2D} context - The rendering context.
+   * @param {import('./IroncladEngine.js').default} engine - The engine instance.
    */
   renderUIElements(context, engine) {
     for (const element of this.uiElements) {
@@ -161,5 +180,4 @@ class BaseScene {
     }
   }
 }
-
 export default BaseScene

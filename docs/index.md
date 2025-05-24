@@ -18,7 +18,7 @@ hero:
       link: https://github.com/TyNorth/ironclad-engine # Replace with your actual GitHub repo link
     - theme: alt
       text: API Reference
-      link: /public/api/home # Links to your JSDoc main page (docs/public/api/index.html) or your VitePress API landing page (docs/api/index.md)
+      link: /api/home # Links to your JSDoc main page (docs/public/api/index.html) or your VitePress API landing page (docs/api/index.md)
 
 features:
   - title: Modular Architecture
@@ -66,6 +66,6 @@ The development of Ironclad Engine is driven by the needs of **Tartu Legends**, 
 
 - Check out the **[Getting Started Guide](./guide/getting-started.md)** to set up your first project.
 - Explore the **[Conceptual Guides](./guide/introduction)** to learn about specific engine systems.
-- Browse the **[Full API Reference](/public/api/)** for detailed information on all classes and modules.
+- Browse the **[Full API Reference](/api/)** for detailed information on all classes and modules.
 
 We hope you find Ironclad Engine a useful tool for your game development journey!

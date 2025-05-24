@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4"
+  },
+  "scripts": {
+    "dev": "npm run docs:dev",
+    "preview": "npm run docs:preview",
+    "build": "npm run docs:build"
+  }
+}

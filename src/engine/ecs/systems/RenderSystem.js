@@ -3,24 +3,9 @@
 import System from '../System.js'
 import Sprite from '../../rendering/Sprite.js' // Ensure this path is correct
 
-/**
- * @class RenderSystem
- * @extends System
- * @description Handles rendering entities that have Position and RenderableSprite components.
- * The actual drawing is performed when its `executeRenderPass` method is called by a scene.
- */
 class RenderSystem extends System {
-  /**
-   * Specifies that this system is interested in entities with "Position" and "RenderableSprite" components.
-   * @static
-   * @type {Array<import('../EntityManager.js').ComponentTypeName>}
-   */
   static requiredComponents = ['Position', 'RenderableSprite']
 
-  /**
-   * @private
-   * @type {import('../../core/AssetLoader.js').default | null}
-   */
   assetLoader = null
 
   constructor() {
@@ -28,46 +13,26 @@ class RenderSystem extends System {
     // console.log("RenderSystem: Constructor called");
   }
 
-  /**
-   * Initializes the system, getting necessary engine services.
-   * @param {import('../../core/IroncladEngine.js').default} engine - The engine instance.
-   */
   initialize(engine) {
-    super.initialize(engine) // Sets this.engine
+    super.initialize(engine)
     if (this.engine) {
       this.assetLoader = this.engine.getAssetLoader()
     }
     if (!this.assetLoader) {
       console.error('RenderSystem: AssetLoader not available from engine!')
     }
-    console.log('RenderSystem: Initialized.')
+    // console.log('RenderSystem: Initialized.');
   }
 
-  /**
-   * Update logic for the RenderSystem (called by engine's system loop).
-   * For this version, actual drawing is handled by `executeRenderPass`, called by the scene.
-   * This update method could be used for culling, preparing draw lists, or animation logic
-   * if animation isn't in its own system. For now, it's minimal.
-   * @param {number} deltaTime - Time since last frame.
-   * @param {Array<import('../EntityManager.js').EntityId>} entities - Entities with Position & RenderableSprite (passed by engine).
-   * @param {import('../../core/IroncladEngine.js').default} engine - The engine instance.
-   */
   update(deltaTime, entities, engine) {
-    // Currently, no per-frame update logic needed here if drawing is handled by executeRenderPass.
-    // Could be used for:
-    // - Culling entities into a this.visibleEntitiesForRenderPass list.
-    // - Updating internal state related to rendering if needed.
+    // Not typically used for drawing if executeRenderPass is primary drawing method.
   }
 
-  /**
-   * Executes the rendering pass for all relevant ECS entities.
-   * This method should be called by the active scene's render method at the appropriate time.
-   * @param {CanvasRenderingContext2D} context - The drawing context.
-   * @param {import('../../rendering/Camera.js').default} camera - The game camera for viewport information.
-   */
   executeRenderPass(context, camera) {
     if (!this.engine || !this.assetLoader || !context || !camera) {
-      // console.error("RenderSystem.executeRenderPass: Missing engine, assetLoader, context, or camera.");
+      console.error(
+        'RenderSystem.executeRenderPass: Missing critical dependencies (engine, assetLoader, context, or camera).',
+      )
       return
     }
 
@@ -77,40 +42,65 @@ class RenderSystem extends System {
       return
     }
 
-    // Get entities that match the system's requirements for rendering
     const entitiesToRender = entityManager.getEntitiesWithComponents(
       RenderSystem.requiredComponents,
     )
 
+    // console.log(`[RenderSystem] Found ${entitiesToRender.length} entities to render.`); // DEBUG
+
     const viewportX = camera.getViewportX()
     const viewportY = camera.getViewportY()
-
-    // TODO: Implement Z-sorting or layer-based sorting here if needed in the future.
-    // For now, entities are rendered in the order they are retrieved.
 
     for (const entityId of entitiesToRender) {
       const position = entityManager.getComponent(entityId, 'Position')
       const renderable = entityManager.getComponent(entityId, 'RenderableSprite')
 
-      if (!position || !renderable) continue // Should ideally not happen due to getEntitiesWithComponents
+      // This check should be redundant if getEntitiesWithComponents works correctly
+      if (!position || !renderable) {
+        // console.warn(`[RenderSystem] Entity ${entityId} missing Position or RenderableSprite component during render pass.`);
+        continue
+      }
 
-      // Lazy instantiate Sprite object if it doesn't exist on the component
-      if (!renderable.spriteInstance) {
-        const image = this.assetLoader.get(renderable.spriteAssetKey)
+      if (renderable.visible === false) {
+        // Check visibility flag from component
+        // console.log(`[RenderSystem] Entity ${entityId} (${renderable.assetName}) is not visible.`);
+        continue
+      }
+
+      // Use 'assetName' from the RenderableSprite component
+      const assetKey = renderable.assetName // <<<< CORRECTED PROPERTY NAME
+      if (!assetKey) {
+        // console.warn(`[RenderSystem] Entity ${entityId} RenderableSprite missing assetName.`);
+        continue
+      }
+
+      // Lazy instantiate or update Sprite object on the component
+      // This allows AnimationSystem to modify sx, sy, sWidth, sHeight on RenderableSprite
+      // and RenderSystem picks them up.
+      if (
+        !renderable.spriteInstance ||
+        renderable.spriteInstance.image?.src.includes(assetKey) === false
+      ) {
+        // Re-create if image source changed
+        const image = this.assetLoader.get(assetKey)
         if (image instanceof HTMLImageElement) {
+          // console.log(`[RenderSystem] Creating/Updating spriteInstance for entity ${entityId} with asset "${assetKey}"`);
           renderable.spriteInstance = new Sprite(
             image,
             0,
-            0, // Sprite's internal x,y are relative, set by its own .x, .y
-            renderable.width || image.naturalWidth,
-            renderable.height || image.naturalHeight,
-            renderable.sx, // sx from component (updated by AnimationSystem or default)
-            renderable.sy, // sy from component
-            renderable.sWidth, // sWidth from component
-            renderable.sHeight, // sHeight from component
+            0, // Initial x, y for Sprite object (will be updated below)
+            renderable.width || image.naturalWidth, // Destination width
+            renderable.height || image.naturalHeight, // Destination height
+            renderable.sx || 0, // Source X
+            renderable.sy || 0, // Source Y
+            renderable.sWidth || image.naturalWidth, // Source Width
+            renderable.sHeight || image.naturalHeight, // Source Height
           )
         } else {
-          // console.warn(`RenderSystem: Image asset "${renderable.spriteAssetKey}" not found for entity ${entityId}.`);
+          console.warn(
+            `[RenderSystem] Image asset "${assetKey}" not found or not an HTMLImageElement for entity ${entityId}. Cannot render.`,
+          )
+          renderable.spriteInstance = null // Ensure it's null if image fails
           continue
         }
       }
@@ -118,46 +108,34 @@ class RenderSystem extends System {
       if (renderable.spriteInstance) {
         const sprite = renderable.spriteInstance
 
-        // Update sprite's screen position based on entity's world position and viewport
         sprite.x = Math.floor(position.x - viewportX + (renderable.offsetX || 0))
         sprite.y = Math.floor(position.y - viewportY + (renderable.offsetY || 0))
+        // Position.z could be used for layering/sorting here or for y-sorting
+        // For now, let's assume RenderableSprite.layer or Position.z can be used by a sort function if needed
 
-        // Ensure sprite's display dimensions are set from the component
-        // If sWidth/sHeight are defined (e.g. by AnimationSystem), use those for source,
-        // and component's width/height for destination.
+        // Ensure sprite's display dimensions are set from the component, fallback to frame/image size
         sprite.width =
-          renderable.width ||
-          (renderable.sWidth ? renderable.sWidth : sprite.image ? sprite.image.naturalWidth : 0)
+          renderable.width !== undefined
+            ? renderable.width
+            : renderable.sWidth || sprite.image.naturalWidth
         sprite.height =
-          renderable.height ||
-          (renderable.sHeight ? renderable.sHeight : sprite.image ? sprite.image.naturalHeight : 0)
+          renderable.height !== undefined
+            ? renderable.height
+            : renderable.sHeight || sprite.image.naturalHeight
 
-        // Apply other visual properties from the component to the sprite instance
+        // Update sprite from RenderableSprite component (animation system might change these)
+        if (renderable.sx !== undefined) sprite.sx = renderable.sx
+        if (renderable.sy !== undefined) sprite.sy = renderable.sy
+        if (renderable.sWidth !== undefined) sprite.sWidth = renderable.sWidth
+        if (renderable.sHeight !== undefined) sprite.sHeight = renderable.sHeight
+
         sprite.opacity = renderable.opacity !== undefined ? renderable.opacity : 1.0
         sprite.rotation = renderable.rotation !== undefined ? renderable.rotation : 0
         sprite.scaleX = renderable.scaleX !== undefined ? renderable.scaleX : 1.0
         sprite.scaleY = renderable.scaleY !== undefined ? renderable.scaleY : 1.0
-        sprite.visible = renderable.visible !== undefined ? renderable.visible : true
+        sprite.visible = renderable.visible !== undefined ? renderable.visible : true // Already checked above but good for sprite state
 
-        // Update the sprite's source frame based on what AnimationSystem (or defaults) put in RenderableSprite
-        // This ensures the Sprite object itself is using the correct source rectangle
-        if (
-          renderable.sx !== undefined &&
-          renderable.sy !== undefined &&
-          renderable.sWidth !== undefined &&
-          renderable.sHeight !== undefined
-        ) {
-          sprite.setFrame(renderable.sx, renderable.sy, renderable.sWidth, renderable.sHeight)
-        } else if (
-          sprite.image &&
-          (sprite.sWidth !== sprite.image.naturalWidth ||
-            sprite.sHeight !== sprite.image.naturalHeight)
-        ) {
-          // If no specific frame info, but sprite might have had one set before, reset to full image
-          sprite.setFrame(0, 0, sprite.image.naturalWidth, sprite.image.naturalHeight)
-        }
-        // If sx,sy,sWidth,sHeight are all undefined on renderable, Sprite constructor already defaults to full image.
-
+        // console.log(`[RenderSystem] Rendering Entity ${entityId} (${assetKey}) at screen (x:${sprite.x}, y:${sprite.y})`);
         sprite.render(context)
       }
     }

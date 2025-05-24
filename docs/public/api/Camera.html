@@ -351,7 +351,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line149">line 149</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line211">line 211</a>
     </li></ul></dd>
     
 
@@ -457,7 +457,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line157">line 157</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line219">line 219</a>
     </li></ul></dd>
     
 
@@ -520,6 +520,8 @@ This is effectively the viewportY offset.
 
 <div class="description">
     Sets the target entity for the camera to follow.
+The target should either have direct worldX, worldY, width, height properties,
+OR have getPosition() and getDimensions() methods.
 </div>
 
 
@@ -564,6 +566,9 @@ This is effectively the viewportY offset.
             
                 
 <span class="param-type">object</span>
+|
+
+<span class="param-type">null</span>
 
 
             
@@ -581,7 +586,7 @@ This is effectively the viewportY offset.
 
             
 
-            <td class="description last">The entity to follow. Must have `worldX`, `worldY`, `width`, and `height` properties.</td>
+            <td class="description last">The entity or object to follow.</td>
         </tr>
 
     
@@ -614,7 +619,7 @@ This is effectively the viewportY offset.
 
             
 
-            <td class="description last">Optional: The x-coordinate on screen where the target should be centered. Defaults to viewport center.</td>
+            <td class="description last">Optional: The x-coordinate on screen where the target should be centered.</td>
         </tr>
 
     
@@ -647,7 +652,7 @@ This is effectively the viewportY offset.
 
             
 
-            <td class="description last">Optional: The y-coordinate on screen where the target should be centered. Defaults to viewport center.</td>
+            <td class="description last">Optional: The y-coordinate on screen where the target should be centered.</td>
         </tr>
 
     
@@ -688,7 +693,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line83">line 83</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line85">line 85</a>
     </li></ul></dd>
     
 
@@ -848,7 +853,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line178">line 178</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line240">line 240</a>
     </li></ul></dd>
     
 
@@ -1008,7 +1013,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line166">line 166</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line228">line 228</a>
     </li></ul></dd>
     
 
@@ -1097,7 +1102,7 @@ Also clamps the camera to the world boundaries.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line108">line 108</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line119">line 119</a>
     </li></ul></dd>
     
 
@@ -1637,7 +1642,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line149">line 149</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line211">line 211</a>
     </li></ul></dd>
     
 
@@ -1743,7 +1748,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line157">line 157</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line219">line 219</a>
     </li></ul></dd>
     
 
@@ -1806,6 +1811,8 @@ This is effectively the viewportY offset.
 
 <div class="description">
     Sets the target entity for the camera to follow.
+The target should either have direct worldX, worldY, width, height properties,
+OR have getPosition() and getDimensions() methods.
 </div>
 
 
@@ -1850,6 +1857,9 @@ This is effectively the viewportY offset.
             
                 
 <span class="param-type">object</span>
+|
+
+<span class="param-type">null</span>
 
 
             
@@ -1867,7 +1877,7 @@ This is effectively the viewportY offset.
 
             
 
-            <td class="description last">The entity to follow. Must have `worldX`, `worldY`, `width`, and `height` properties.</td>
+            <td class="description last">The entity or object to follow.</td>
         </tr>
 
     
@@ -1900,7 +1910,7 @@ This is effectively the viewportY offset.
 
             
 
-            <td class="description last">Optional: The x-coordinate on screen where the target should be centered. Defaults to viewport center.</td>
+            <td class="description last">Optional: The x-coordinate on screen where the target should be centered.</td>
         </tr>
 
     
@@ -1933,7 +1943,7 @@ This is effectively the viewportY offset.
 
             
 
-            <td class="description last">Optional: The y-coordinate on screen where the target should be centered. Defaults to viewport center.</td>
+            <td class="description last">Optional: The y-coordinate on screen where the target should be centered.</td>
         </tr>
 
     
@@ -1974,7 +1984,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line83">line 83</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line85">line 85</a>
     </li></ul></dd>
     
 
@@ -2134,7 +2144,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line178">line 178</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line240">line 240</a>
     </li></ul></dd>
     
 
@@ -2294,7 +2304,7 @@ This is effectively the viewportY offset.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line166">line 166</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line228">line 228</a>
     </li></ul></dd>
     
 
@@ -2383,7 +2393,7 @@ Also clamps the camera to the world boundaries.
     
     <dt class="tag-source">Source:</dt>
     <dd class="tag-source"><ul class="dummy"><li>
-        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line108">line 108</a>
+        <a href="rendering_Camera.js.html">rendering/Camera.js</a>, <a href="rendering_Camera.js.html#line119">line 119</a>
     </li></ul></dd>
     
 
@@ -2429,13 +2439,13 @@ Also clamps the camera to the world boundaries.
 </div>
 
 <nav>
-    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="RenderSystem.html">RenderSystem</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3><a href="global.html">Global</a></h3>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EPSILON">EPSILON</a></li><li><a href="global.html#GRAVITY_X">GRAVITY_X</a></li><li><a href="global.html#GRAVITY_Y">GRAVITY_Y</a></li><li><a href="global.html#GRAVITY_Z">GRAVITY_Z</a></li></ul>
 </nav>
 
 <br class="clear">
 
 <footer>
-    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 17 2025 20:34:29 GMT-0400 (Eastern Daylight Time)
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Thu May 22 2025 21:18:03 GMT-0400 (Eastern Daylight Time)
 </footer>
 
 <script> prettyPrint(); </script>

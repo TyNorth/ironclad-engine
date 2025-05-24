@@ -16,6 +16,7 @@ import Camera from '../rendering/Camera.js' // 1. Import Camera
 import SaveLoadManager from './SaveLoadManager.js'
 import EffectsManager from './EffectsManager.js'
 import AudioManager from './AudioManager.js'
+import DialogueManager from '../dialogue/DialogueManager.js'
 // import System from '../ecs/System.js'; // For type hint in getSystem if using TS/JSDoc extensively
 
 class IroncladEngine {
@@ -123,6 +124,7 @@ class IroncladEngine {
     this.prefabManager = new PrefabManager(this.entityManager, this.assetLoader)
     this.effectsManager = new EffectsManager(this)
     this.audioManager = new AudioManager(this.assetLoader, this.events)
+    this.dialogueManager = new DialogueManager(this)
 
     this.sceneManager = new SceneManager()
     this.sceneManager.setContextAndEngine(this.offscreenContext, this)

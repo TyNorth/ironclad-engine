@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: physics/PhysicsSystem.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: physics/PhysicsSystem.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>// src/engine/physics/PhysicsSystem.js
+import System from '../ecs/System.js'
+import { EPSILON } from './PhysicsConstants.js' // GRAVITY constants might not be used for basic overworld movement
+
+/**
+ * @file PhysicsSystem.js
+ * @description Handles 2D planar movement, tile-based collision, and basic AABB entity collision
+ * for an Octopath Traveler style overworld.
+ * Assumes X = horizontal screen, Y = vertical screen. Z is for layering/depth, not primary collision.
+ */
+
+// --- Component Structure Definitions (JSDoc Typedefs) ---
+/**
+ * @typedef {object} PositionComponent
+ * @property {number} x - World x-coordinate.
+ * @property {number} y - World y-coordinate.
+ * @property {number} [z=0] - World z-coordinate (for layering or simple height).
+ */
+/**
+ * @typedef {object} VelocityComponent
+ * @property {number} vx - Velocity on the x-axis (pixels/second).
+ * @property {number} vy - Velocity on the y-axis.
+ * @property {number} [vz=0] - Velocity on the z-axis (if used for depth changes).
+ */
+/**
+ * @typedef {object} PhysicsBodyComponent
+ * @property {'dynamic' | 'static'} entityType - 'dynamic' entities move, 'static' are immovable.
+ * @property {boolean} [useGravity=false] - Typically false for Octopath-style overworld player/NPCs.
+ * Could be true for specific physics objects if needed.
+ * @property {number} [gravityScale=1.0]
+ * @property {boolean} [isOnGround=true] - For this style, usually true unless specific state like "being knocked back".
+ */
+/**
+ * @typedef {object} ColliderComponent
+ * @property {'aabb'} shape
+ * @property {number} width - Width of the AABB (along X).
+ * @property {number} height - Height of the AABB (along Y).
+ * @property {number} [depth=1] - Depth of the AABB (along Z, can be minimal for 2D plane collision).
+ * @property {number} [offsetX=0]
+ * @property {number} [offsetY=0]
+ * @property {number} [offsetZ=0]
+ * @property {boolean} [isTrigger=false]
+ * @property {number} [collisionLayer=1]
+ * @property {number} [collisionMask=1]
+ * @property {boolean} [collidesWithTiles=true]
+ */
+
+class PhysicsSystem extends System {
+  static requiredComponents = ['Position', 'Velocity', 'PhysicsBody', 'Collider']
+
+  constructor() {
+    super()
+    // console.log("PhysicsSystem: Constructed for 2D Overworld style.");
+  }
+
+  initialize(engine) {
+    super.initialize(engine)
+    // console.log("PhysicsSystem: Initialized.");
+  }
+
+  _getAABB(position, collider) {
+    // For 2D planar collision (XY), we primarily care about X and Y for AABB overlap.
+    // Z can be used for layering or simple height checks if needed.
+    // Assuming position x,y,z is the CENTER of the entity for now
+    const halfWidth = collider.width / 2
+    const halfHeight = collider.height / 2
+    // const halfDepth = (collider.depth || 1) / 2; // Use a default depth if not specified
+
+    const centerX = position.x + (collider.offsetX || 0)
+    const centerY = position.y + (collider.offsetY || 0)
+    // const centerZ = position.z + (collider.offsetZ || 0);
+
+    return {
+      minX: centerX - halfWidth,
+      maxX: centerX + halfWidth,
+      minY: centerY - halfHeight,
+      maxY: centerY + halfHeight,
+      // minZ: centerZ - halfDepth, maxZ: centerZ + halfDepth, // Keep Z for potential 3D AABB later
+    }
+  }
+
+  _checkAABBOverlap(aabb1, aabb2) {
+    // Simplified for 2D XY plane
+    return (
+      aabb1.minX &lt; aabb2.maxX &amp;&amp;
+      aabb1.maxX > aabb2.minX &amp;&amp;
+      aabb1.minY &lt; aabb2.maxY &amp;&amp;
+      aabb1.maxY > aabb2.minY
+      // &amp;&amp; aabb1.minZ &lt; aabb2.maxZ &amp;&amp; aabb1.maxZ > aabb2.minZ // For 3D
+    )
+  }
+
+  _checkEntityTileCollision(entityId, position, collider, scene) {
+    const colX = position.x + (collider.offsetX || 0)
+    const colY = position.y + (collider.offsetY || 0)
+    // For Octopath-style, often a single point or a small set of points is sufficient
+    // depending on how tight you want the tile collision. Using AABB corners for now.
+    const points = [
+      { x: colX - collider.width / 2 + EPSILON, y: colY - collider.height / 2 + EPSILON }, // Top-left
+      { x: colX + collider.width / 2 - EPSILON, y: colY - collider.height / 2 + EPSILON }, // Top-right
+      { x: colX - collider.width / 2 + EPSILON, y: colY + collider.height / 2 - EPSILON }, // Bottom-left
+      { x: colX + collider.width / 2 - EPSILON, y: colY + collider.height / 2 - EPSILON }, // Bottom-right
+    ]
+
+    for (const point of points) {
+      if (scene.isTileSolidAtWorldXY(point.x, point.y)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  update(deltaTime, entities, engineRef) {
+    if (!this.entityManager || !this.engine) return
+
+    const activeScene = this.engine.sceneManager
+      ? this.engine.sceneManager.getActiveSceneInstance()
+      : null
+    const canCheckTileCollisions =
+      activeScene &amp;&amp;
+      typeof activeScene.isTileSolidAtWorldXY === 'function' &amp;&amp;
+      activeScene.tileWidth > 0 &amp;&amp;
+      activeScene.tileHeight > 0
+
+    for (const entityId of entities) {
+      const position = this.entityManager.getComponent(entityId, 'Position')
+      const velocity = this.entityManager.getComponent(entityId, 'Velocity')
+      const physicsBody = this.entityManager.getComponent(entityId, 'PhysicsBody')
+      const collider = this.entityManager.getComponent(entityId, 'Collider')
+
+      // Acceleration component might not be used for simple top-down movement
+      // let acceleration = this.entityManager.getComponent(entityId, 'Acceleration');
+      // if (!acceleration) acceleration = { ax: 0, ay: 0, az: 0 };
+
+      if (physicsBody.entityType === 'static') {
+        velocity.vx = 0
+        velocity.vy = 0
+        velocity.vz = 0
+        continue
+      }
+
+      // For Octopath-style, gravity is typically not applied to character movement on the map.
+      // If physicsBody.useGravity were true, you'd apply it here.
+      // velocity.vy += (physicsBody.useGravity ? GRAVITY_Y * (physicsBody.gravityScale || 1.0) : 0) * deltaTime;
+      // velocity.vx += ... (similar for other gravity axes if any)
+
+      // Store current position
+      const prevX = position.x
+      const prevY = position.y
+      // const prevZ = position.z;
+
+      // Update position based on velocity (this is the potential new position)
+      position.x += velocity.vx * deltaTime
+      position.y += velocity.vy * deltaTime
+      // position.z += velocity.vz * deltaTime; // If Z movement is allowed
+
+      // --- Collision Detection &amp; Response ---
+      let collisionOccurred = false
+
+      // 1. Tile Collision (for X and Y plane)
+      if (canCheckTileCollisions &amp;&amp; collider.collidesWithTiles) {
+        // Check collision at new proposed position (position.x, position.y)
+        if (this._checkEntityTileCollision(entityId, position, collider, activeScene)) {
+          // console.log(`[PhysicsSystem] Tile Collision for Entity ${entityId} at P(${position.x.toFixed(1)}, ${position.y.toFixed(1)})`);
+          collisionOccurred = true
+          // Simple resolution: revert to previous position for now.
+          // More advanced: resolve per axis.
+          position.x = prevX
+          position.y = prevY
+          // Optionally zero out velocity components if desired upon hitting a tile wall.
+          // For Octopath, usually just stops. Velocity is set by input next frame.
+          // velocity.vx = 0;
+          // velocity.vy = 0;
+        }
+      }
+
+      // 2. Entity-to-Entity Collision (AABB on XY plane)
+      // We use the (potentially tile-collision-resolved) position for aabbA
+      const aabbA = this._getAABB(position, collider)
+      let entityIdA
+      for (const entityIdB of entities) {
+        // Could optimize by only checking against other relevant entities
+        if (entityIdA === entityIdB) continue
+
+        const positionB = this.entityManager.getComponent(entityIdB, 'Position')
+        const colliderB = this.entityManager.getComponent(entityIdB, 'Collider')
+        const physicsBodyB = this.entityManager.getComponent(entityIdB, 'PhysicsBody')
+
+        if (!positionB || !colliderB || !physicsBodyB) continue
+
+        const canACollideB = (collider.collisionLayer &amp; colliderB.collisionMask) !== 0
+        const canBCollideA = (colliderB.collisionLayer &amp; collider.collisionMask) !== 0
+
+        if (!(canACollideB &amp;&amp; canBCollideA)) continue
+
+        const aabbB = this._getAABB(positionB, colliderB)
+
+        if (this._checkAABBOverlap(aabbA, aabbB)) {
+          if (collider.isTrigger || colliderB.isTrigger) {
+            if (this.engine.events) {
+              this.engine.events.emit('triggerEnter', { entityA: entityIdA, entityB: entityIdB })
+            }
+          } else {
+            // Solid collision
+            collisionOccurred = true
+            // console.log(`%c[PhysicsSystem] SOLID AABB Collision: ${entityIdA} vs ${entityIdB}`, "color: red");
+            // Simple resolution: revert entityA to previous position.
+            // This is a very basic response and can cause issues with multiple collisions.
+            // A proper response would involve penetration depth and directional resolution.
+            position.x = prevX
+            position.y = prevY
+            // Optionally modify velocities (e.g., stop)
+            // velocity.vx = 0;
+            // velocity.vy = 0;
+            // If entityB is dynamic, it might also need to be moved/stopped.
+            break // Stop checking other entities for entityA if a solid collision occurred
+          }
+        }
+      } // End entity-entity collision loop
+
+      // If a collision forced a position revert, re-evaluate velocity for next frame.
+      // For simple stop, velocity would be re-evaluated by input next frame.
+      // If after all checks, position is same as prevPosition, and velocity was non-zero, then zero it.
+      if (position.x === prevX &amp;&amp; velocity.vx !== 0) velocity.vx = 0
+      if (position.y === prevY &amp;&amp; velocity.vy !== 0) velocity.vy = 0
+    } // End main entity loop
+  }
+}
+
+export default PhysicsSystem
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="AssetLoader.html">AssetLoader</a></li><li><a href="AudioManager.html">AudioManager</a></li><li><a href="BaseEntity.html">BaseEntity</a></li><li><a href="Camera.html">Camera</a></li><li><a href="Checkbox.html">Checkbox</a></li><li><a href="EffectsManager.html">EffectsManager</a></li><li><a href="EntityManager.html">EntityManager</a></li><li><a href="EventManager.html">EventManager</a></li><li><a href="FlashEffect.html">FlashEffect</a></li><li><a href="GameLoop.html">GameLoop</a></li><li><a href="InputManager.html">InputManager</a></li><li><a href="Label.html">Label</a></li><li><a href="Panel.html">Panel</a></li><li><a href="PrefabManager.html">PrefabManager</a></li><li><a href="SaveLoadManager.html">SaveLoadManager</a></li><li><a href="ScrollablePanel.html">ScrollablePanel</a></li><li><a href="ShakeEffect.html">ShakeEffect</a></li><li><a href="Slider.html">Slider</a></li><li><a href="Sprite.html">Sprite</a></li><li><a href="System.html">System</a></li><li><a href="TextInputField.html">TextInputField</a></li><li><a href="TileLayerRenderer.html">TileLayerRenderer</a></li><li><a href="TintEffect.html">TintEffect</a></li><li><a href="ValueBar.html">ValueBar</a></li></ul><h3>Global</h3><ul><li><a href="global.html#EPSILON">EPSILON</a></li><li><a href="global.html#GRAVITY_X">GRAVITY_X</a></li><li><a href="global.html#GRAVITY_Y">GRAVITY_Y</a></li><li><a href="global.html#GRAVITY_Z">GRAVITY_Z</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Thu May 22 2025 21:18:03 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

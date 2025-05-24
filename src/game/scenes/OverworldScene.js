@@ -12,6 +12,7 @@ import Sprite from '../../engine/rendering/Sprite.js' // Used by RenderSystem in
 import RenderSystem from '../../engine/ecs/systems/RenderSystem.js'
 import TileLayerRenderer from '@/engine/rendering/TileLayerRenderer.js'
 import TintEffect from '@/engine/fx/TintEffect.js'
+import DialogueBox from '@/engine/ui/DialogueBox.js'
 
 class OverworldScene {
   constructor() {
@@ -57,11 +58,11 @@ class OverworldScene {
     this.tileHeight = 0
 
     /** @private @type {boolean} Toggle for debug drawing of map collision tiles */
-    this.debugDrawMapCollision = true // Start with it off, toggle with 'toggleDebug' action
+    this.debugDrawMapCollision = false // Start with it off, toggle with 'toggleDebug' action
     /** @private @type {boolean} Toggle for debug drawing of player collision info */
-    this.debugDrawPlayerCollision = true // Also toggled by 'toggleDebug'
+    this.debugDrawPlayerCollision = false // Also toggled by 'toggleDebug'
     this.gameSettings = {
-      volume: 80,
+      volume: 60,
       difficulty: 'Normal',
       showHints: true,
       playerName: 'Hero', // Could come from player data
@@ -108,8 +109,18 @@ class OverworldScene {
     this.mapBackgroundImage = this.assetLoader.get('mainTilesetPNG')
     this.mapJsonData = this.assetLoader.get('testMapData')
 
-    let worldWidth = this.canvas.width
-    let worldHeight = this.canvas.height
+    let worldWidth = 0
+    let worldHeight = 0
+
+    if (this.canvas && this.canvas.width > 0 && this.canvas.height > 0) {
+      worldWidth = this.canvas.width
+      worldHeight = this.canvas.height
+      // console.log(`[OverworldScene Init] Using canvas dimensions: ${worldWidth}x${worldHeight}`);
+    } else {
+      console.warn('[OverworldScene Init] Canvas has no dimensions yet. Defaulting world size.')
+      worldWidth = 800 // Fallback if canvas has no size
+      worldHeight = 600
+    }
 
     if (this.mapBackgroundImage) {
       worldWidth = this.mapBackgroundImage.naturalWidth
@@ -165,13 +176,15 @@ class OverworldScene {
       }
     }
 
-    const playerStartX = worldWidth / 3
-    const playerStartY = worldHeight / 3
+    const playerStartX = Number(worldWidth / 3) || 100 // Ensure it's a number, provide hard fallback
+    const playerStartY = Number(worldHeight / 3) || 100 // Ensure it's a number, provide hard fallback
+
     this.player = new Player({
       entityManager: this.entityManager, // Pass the EntityManager instance
       engine: this.engine, // Pass the Engine instance
       x: playerStartX,
       y: playerStartY,
+      z: 0,
       assetLoader: this.assetLoader, // Player constructor still needs this for sprite info
       name: 'Ironclad Hero', // Example: pass other Player-specific options
       hp: 100,
@@ -181,20 +194,73 @@ class OverworldScene {
       spriteSheetName: 'testPlayer', // Ensure this matches an asset
       width: 32, // For Collider and SpriteData
       height: 32, // For Collider and SpriteData
+      jumpForce: 450, // From ECS Player constructor
+
       // Add any other custom properties defined in Player constructor options here
       inventory: [
         // Example initial inventory
         { id: 'start_potion', name: 'Starter Health Vial', quantity: 2 },
         { id: 'rusty_dagger', name: 'Rusty Dagger', quantity: 1 },
       ],
+      physicsBody: {
+        // Ensure you can pass component data overrides like this or set it in Player constructor
+        entityType: 'dynamic',
+        mass: 1,
+        useGravity: false, // Explicitly false for overworld movement
+        gravityScale: 1.0,
+        friction: 0.1,
+        restitution: 0.0,
+      },
     })
 
-    if (this.player) {
-      this.camera.setTarget(this.player)
-      console.log('OverworldScene: Engine camera target set to player.')
+    this.dialogueBoxUI = new DialogueBox({
+      engine: this.engine, // DialogueBox needs the engine for AssetLoader (portraits) and InputManager (for choice clicks if needed)
+      x: 50,
+      y: this.canvas.height - 170, // Position at bottom
+      width: this.canvas.width - 100,
+      height: 150,
+      visible: false, // Start hidden
+    })
+
+    // Link it to the DialogueManager
+    if (this.engine.dialogueManager) {
+      this.engine.dialogueManager.setDialogueBox(this.dialogueBoxUI)
+      this.engine.dialogueManager.loadDialogueData('gameDialogues') // Load data
+    }
+
+    console.log('[OverworldScene] Player object created:', this.player)
+    // Ensure these methods exist on the Player prototype or instance
+    console.log('[OverworldScene] typeof player.getPosition:', typeof this.player?.getPosition)
+    console.log('[OverworldScene] typeof player.getDimensions:', typeof this.player?.getDimensions)
+
+    if (this.player && typeof this.player.getPosition === 'function') {
+      const pos = this.player.getPosition()
+      console.log('[OverworldScene] player.getPosition() returns:', pos) // Check if x or y are NaN here
+      if (pos && (isNaN(pos.x) || isNaN(pos.y))) {
+        console.error('CRITICAL: Player getPosition() returned NaN values!')
+      }
+    }
+    if (this.player && typeof this.player.getDimensions === 'function') {
+      console.log('[OverworldScene] player.getDimensions() returns:', this.player.getDimensions())
+    }
+
+    if (this.player && this.player.id !== undefined) {
+      // Only set target if player seems valid and getPosition will return numbers
+      if (
+        this.player.getPosition &&
+        !isNaN(this.player.getPosition().x) &&
+        !isNaN(this.player.getPosition().y)
+      ) {
+        this.camera.setTarget(this.player)
+      } else {
+        console.error(
+          '[OverworldScene] Cannot set camera target, player position is NaN or getPosition is missing.',
+        )
+      }
     }
 
     if (this.engine.sceneManager && this.player) {
+      console.log('pushing HUD')
       this.engine.sceneManager.pushScene('HUDScene', { player: this.player })
     }
 
@@ -419,7 +485,6 @@ class OverworldScene {
           maxY: this.mapBackgroundImage.naturalHeight,
         }
       }
-      this.player.update(deltaTime, this, worldBounds) // Pass 'this' (scene) for collision checks
     }
 
     if (this.camera) {
@@ -491,11 +556,6 @@ class OverworldScene {
       context.globalAlpha = originalAlpha
     }
 
-    // 2. Render the non-ECS Player (will draw its own debug info if flag is true)
-    if (this.player) {
-      this.player.render(context, viewportX, viewportY, this.debugDrawPlayerCollision)
-    }
-
     // 3. Render ECS Entities using the RenderSystem
     const renderSystem = engine.getSystem(RenderSystem)
     if (renderSystem && typeof renderSystem.executeRenderPass === 'function') {
@@ -507,46 +567,75 @@ class OverworldScene {
     }
 
     // Debug text
+    // --- Debug text ---
     const debugTextYStart = 20
     const debugTextLineHeight = 15
-    let debugBoxHeight = 75
-    if (this.debugDrawMapCollision || this.debugDrawPlayerCollision) {
-      debugBoxHeight += debugTextLineHeight // Make box taller if collision debug on
+    let debugBoxHeight = 20 // Start with some base height for the box
+
+    // Calculate how many lines of text we'll have to adjust box height
+    let linesOfText = 0
+    linesOfText++ // For Camera X, Y
+    if (this.player && typeof this.player.getPosition === 'function') linesOfText++ // For Player X, Y, Z
+    if (this.player && typeof this.player.getComponent === 'function') {
+      if (this.player.getComponent('Velocity')) linesOfText++ // For Player Velocity
+      if (this.player.getComponent('PhysicsBody')) linesOfText++ // For Player onGround status
     }
+    if (this.mapBackgroundImage) linesOfText++ // For Map Size
+    if (this.debugDrawMapCollision || this.debugDrawPlayerCollision) linesOfText++ // For Debug Active status
+
+    debugBoxHeight = debugTextYStart + linesOfText * debugTextLineHeight
 
     context.fillStyle = 'rgba(0,0,0,0.7)'
-    context.fillRect(5, 5, 290, debugBoxHeight)
+    context.fillRect(5, 5, 290, debugBoxHeight) // Adjusted width if needed
     context.fillStyle = 'white'
     context.textAlign = 'left'
     context.font = '12px Arial'
     let line = 0
+
     context.fillText(
       `Cam X: ${viewportX.toFixed(0)}, Y: ${viewportY.toFixed(0)}`,
       10,
       debugTextYStart + line++ * debugTextLineHeight,
     )
-    context.fillText(
-      `Player: WASD/Actions. Cam follows.`,
-      10,
-      debugTextYStart + line++ * debugTextLineHeight,
-    )
-    if (this.player) {
+
+    // Updated Player Debug Information
+    if (this.player && typeof this.player.getPosition === 'function') {
+      const playerPos = this.player.getPosition() // Get position from ECS Player
+      const playerVel = this.player.getComponent('Velocity') // Get velocity component
+      const playerPhys = this.player.getComponent('PhysicsBody') // Get physics body
+
+      if (playerPos) {
+        context.fillText(
+          `Player (ECS) X: ${playerPos.x.toFixed(0)}, Y: ${playerPos.y.toFixed(0)}, Z: ${playerPos.z.toFixed(0)}`,
+          10,
+          debugTextYStart + line++ * debugTextLineHeight,
+        )
+      }
+      if (playerVel) {
+        context.fillText(
+          `Player Vel VX: ${playerVel.vx.toFixed(1)}, VY: ${playerVel.vy.toFixed(1)}, VZ: ${playerVel.vz.toFixed(1)}`,
+          10,
+          debugTextYStart + line++ * debugTextLineHeight,
+        )
+      }
+      if (playerPhys) {
+        context.fillText(
+          `Player Grounded: ${playerPhys.isOnGround}`,
+          10,
+          debugTextYStart + line++ * debugTextLineHeight,
+        )
+      }
+      if (playerPhys) {
+        context.fillText(
+          `Toggle Collision Layer: C`,
+          10,
+          debugTextYStart + line++ * debugTextLineHeight,
+        )
+      }
+    } else if (this.player) {
+      // Fallback for older player structure if it was somehow still in use
       context.fillText(
-        `Player X: ${this.player.worldX.toFixed(0)}, Y: ${this.player.worldY.toFixed(0)}`,
-        10,
-        debugTextYStart + line++ * debugTextLineHeight,
-      )
-    }
-    if (this.mapBackgroundImage) {
-      context.fillText(
-        `Map Size: ${this.mapBackgroundImage.naturalWidth}x${this.mapBackgroundImage.naturalHeight}`,
-        10,
-        debugTextYStart + line++ * debugTextLineHeight,
-      )
-    }
-    if (this.debugDrawMapCollision || this.debugDrawPlayerCollision) {
-      context.fillText(
-        `Debug Active (C): Map ${this.debugDrawMapCollision}, Player ${this.debugDrawPlayerCollision}`,
+        `Player (Old) X: ${this.player.worldX?.toFixed(0)}, Y: ${this.player.worldY?.toFixed(0)}`,
         10,
         debugTextYStart + line++ * debugTextLineHeight,
       )
